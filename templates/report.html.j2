@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --page-bg: #f4f1ea;
+      --surface: #ffffff;
+      --surface-soft: #faf8f3;
+      --ink: #21303d;
+      --muted: #6b7280;
+      --line: #ddd5c6;
+      --navy: #14304d;
+      --navy-soft: #1b3d61;
+      --gold: #c9a55a;
+      --gold-soft: #e5d1a0;
+      --good: #2f6f4f;
+      --watch: #9a6a18;
+      --bad: #a53b3b;
+      --radius: 16px;
+      --shadow: 0 10px 28px rgba(20, 48, 77, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--page-bg);
+    }
+
+    .page {
+      width: 1120px;
+      margin: 16px auto;
+      background: var(--surface);
+      border: 1px solid rgba(201, 165, 90, 0.18);
+      box-shadow: 0 18px 40px rgba(20, 48, 77, 0.08);
+      padding: 22px 28px 24px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--line);
+    }
+
+    .header-mark {
+      width: 74px;
+      height: 74px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #183754 0%, #102841 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex: 0 0 74px;
+    }
+
+    .header-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    h1, h2 {
+      margin: 0;
+      color: var(--navy);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.14;
+    }
+
+    h1 { font-size: 34px; }
+    h2 { font-size: 22px; }
+
+    .header-meta {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .section {
+      margin-top: 22px;
+      page-break-inside: avoid;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    .section-header p,
+    .text-note {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .insight-shell {
+      background: linear-gradient(180deg, #f7f1e4 0%, #f3ecde 100%);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+      color: var(--navy);
+      box-shadow: 0 8px 24px rgba(20, 48, 77, 0.05);
+    }
+
+    .insight-title,
+    .tile-label,
+    .funnel-label,
+    .event-label,
+    .diagnosis-title {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .insight-text {
+      margin-top: 8px;
+      font-size: 20px;
+      line-height: 1.42;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .funnel-strip {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .funnel-step,
+    .period-tile,
+    .learning-card,
+    .diagnosis-card {
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 8px 24px rgba(20, 48, 77, 0.04);
+    }
+
+    .funnel-step {
+      min-height: 112px;
+      border-top: 4px solid var(--gold);
+    }
+
+    .funnel-value {
+      margin-top: 10px;
+      font-size: 26px;
+      line-height: 1;
+      color: var(--navy);
+      font-weight: 800;
+    }
+
+    .funnel-sub,
+    .tile-sub,
+    .event-sub {
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+
+    .period-summary,
+    .learning-grid,
+    .diagnosis-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .cost-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1.1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .cost-card {
+      background: linear-gradient(180deg, var(--navy-soft) 0%, var(--navy) 100%);
+      color: #fff6df;
+      border: 1px solid rgba(201, 165, 90, 0.45);
+      border-radius: 14px;
+      padding: 18px 18px;
+      box-shadow: var(--shadow);
+      min-height: 128px;
+    }
+
+    .cost-card.light {
+      background: var(--surface-soft);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+
+    .cost-label {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold-soft);
+      font-weight: 800;
+    }
+
+    .cost-card.light .cost-label {
+      color: var(--muted);
+    }
+
+    .cost-value {
+      margin-top: 10px;
+      font-size: 34px;
+      line-height: 1;
+      font-weight: 900;
+      color: var(--gold);
+    }
+
+    .cost-card.light .cost-value {
+      color: var(--navy);
+    }
+
+    .cost-sub {
+      margin-top: 9px;
+      font-size: 13px;
+      line-height: 1.35;
+      color: #fff6df;
+    }
+
+    .cost-card.light .cost-sub {
+      color: var(--muted);
+    }
+
+    .card-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .signal {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+      background: rgba(20, 48, 77, 0.04);
+      border: 1px solid rgba(20, 48, 77, 0.08);
+    }
+
+    .cost-card:not(.light) .signal {
+      color: #fff6df;
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .funnel-step .signal {
+      padding: 4px;
+      gap: 0;
+      font-size: 0;
+    }
+
+    .signal-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      flex: 0 0 9px;
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+    }
+
+    .signal-ok { color: var(--good); }
+    .signal-watch { color: var(--watch); }
+    .signal-bad { color: var(--bad); }
+    .signal-ok .signal-dot { background: var(--good); }
+    .signal-watch .signal-dot { background: var(--watch); }
+    .signal-bad .signal-dot { background: var(--bad); }
+
+    .tile-value,
+    .event-value {
+      margin-top: 8px;
+      font-size: 28px;
+      line-height: 1;
+      color: var(--navy);
+      font-weight: 800;
+    }
+
+    .event-value span {
+      display: block;
+      margin-top: 7px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .table-shell {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(20, 48, 77, 0.05);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    thead { background: #f3ecde; }
+
+    th {
+      padding: 13px 14px;
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.3;
+      color: var(--navy);
+      font-weight: 800;
+      border-bottom: 1px solid var(--line);
+      vertical-align: bottom;
+    }
+
+    td {
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.4;
+      border-bottom: 1px solid #ece6db;
+      color: var(--ink);
+      vertical-align: middle;
+      word-break: break-word;
+    }
+
+    tbody tr:nth-child(even) { background: var(--surface-soft); }
+    tbody tr:last-child td { border-bottom: 0; }
+
+    .adset-table {
+      table-layout: fixed;
+    }
+
+    .adset-table th:nth-child(1),
+    .adset-table td:nth-child(1) { width: 26%; }
+    .adset-table th:nth-child(2),
+    .adset-table td:nth-child(2) { width: 19%; }
+    .adset-table th:nth-child(3),
+    .adset-table td:nth-child(3) { width: 10%; }
+    .adset-table th:nth-child(4),
+    .adset-table td:nth-child(4) { width: 10%; }
+    .adset-table th:nth-child(5),
+    .adset-table td:nth-child(5) { width: 10%; }
+    .adset-table th:nth-child(6),
+    .adset-table td:nth-child(6) { width: 9%; }
+    .adset-table th:nth-child(7),
+    .adset-table td:nth-child(7) { width: 10%; }
+    .adset-table th:nth-child(8),
+    .adset-table td:nth-child(8) { width: 16%; }
+
+    .decision-pill,
+    .status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--navy);
+      background: rgba(201, 165, 90, 0.16);
+      white-space: normal;
+      line-height: 1.2;
+      max-width: 100%;
+      text-align: center;
+    }
+
+    .status-ok {
+      color: var(--good);
+      background: rgba(47, 111, 79, 0.12);
+    }
+
+    .status-watch {
+      color: var(--watch);
+      background: rgba(201, 165, 90, 0.18);
+    }
+
+    .status-bad {
+      color: var(--bad);
+      background: rgba(165, 59, 59, 0.12);
+    }
+
+    .diagnosis-card {
+      min-height: 96px;
+    }
+
+    .diagnosis-text {
+      margin-top: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--ink);
+    }
+
+    @media print {
+      body { background: #fff; }
+      .page {
+        width: auto;
+        margin: 0;
+        box-shadow: none;
+        border: 0;
+        padding: 8mm 8mm;
+      }
+      .section { break-inside: avoid; }
+      .table-shell { box-shadow: none; }
+      .decision-pill { font-size: 10px; padding: 5px 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-mark">
+        <img src="2lion.png" alt="LionCare logo">
+      </div>
+      <div>
+        <div class="eyebrow">Napi vezetői riport</div>
+        <h1>{{ title }}</h1>
+        <div class="header-meta">Vizsgált nap: {{ decision_report.report_date }}</div>
+      </div>
+    </header>
+
+    <section class="section">
+      <div class="insight-shell">
+        <div class="insight-title">Mai vezetői válasz</div>
+        <div class="insight-text">{{ decision_report.executive_summary }}</div>
+        <p class="text-note">A riport logikája: először a két leadárat nézd, utána a funnel lépéseit. A Meta lead ára a Meta CompleteRegistration alapján számol, a GHL lead ára pedig a CRM-be ténylegesen bejutott lead alapján.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Lead árak</h2>
+          <p>Ez a napi riport fő döntési pontja: mennyiért vettünk Meta konverziót, és mennyiért lett belőle valódi GHL lead.</p>
+        </div>
+      </div>
+      <div class="cost-grid">
+        <article class="cost-card">
+          <div class="card-topline">
+            <div class="cost-label">Meta lead ára</div>
+            <span class="signal {% if decision_report.kpi_statuses.meta_cpl == 'OK' %}signal-ok{% elif decision_report.kpi_statuses.meta_cpl == 'FIGYELNI' %}signal-watch{% else %}signal-bad{% endif %}">
+              <span class="signal-dot"></span>{{ decision_report.kpi_statuses.meta_cpl }}
+            </span>
+          </div>
+          {% if decision_report.meta.registration_leads > 0 %}
+          <div class="cost-value">{{ decision_report.calculated.meta_cpl|int }} Ft</div>
+          <div class="cost-sub">Költés / Meta CompleteRegistration: {{ decision_report.meta.spend|int }} Ft / {{ decision_report.meta.registration_leads }}</div>
+          {% else %}
+          <div class="cost-value">N/A</div>
+          <div class="cost-sub">Nincs Meta CompleteRegistration, ezért nincs Meta CPL.</div>
+          {% endif %}
+        </article>
+        <article class="cost-card">
+          <div class="card-topline">
+            <div class="cost-label">GHL lead ára</div>
+            <span class="signal {% if decision_report.kpi_statuses.ghl_lead_cost == 'OK' %}signal-ok{% elif decision_report.kpi_statuses.ghl_lead_cost == 'FIGYELNI' %}signal-watch{% else %}signal-bad{% endif %}">
+              <span class="signal-dot"></span>{{ decision_report.kpi_statuses.ghl_lead_cost }}
+            </span>
+          </div>
+          {% if decision_report.ghl.total_leads > 0 %}
+          <div class="cost-value">{{ decision_report.calculated.ghl_lead_cost|int }} Ft</div>
+          <div class="cost-sub">Költés / GHL lead: {{ decision_report.meta.spend|int }} Ft / {{ decision_report.ghl.total_leads }}</div>
+          {% else %}
+          <div class="cost-value">N/A</div>
+          <div class="cost-sub">Nincs GHL-be jutott lead, ezért nincs CRM leadár.</div>
+          {% endif %}
+        </article>
+        <article class="cost-card light">
+          <div class="card-topline">
+            <div class="cost-label">Meta CompleteRegistration</div>
+            <span class="signal {% if decision_report.kpi_statuses.meta_cpl == 'OK' %}signal-ok{% elif decision_report.kpi_statuses.meta_cpl == 'FIGYELNI' %}signal-watch{% else %}signal-bad{% endif %}">
+              <span class="signal-dot"></span>{{ decision_report.kpi_statuses.meta_cpl }}
+            </span>
+          </div>
+          <div class="cost-value">{{ decision_report.meta.registration_leads }}</div>
+          <div class="cost-sub">Ezt látja a Meta optimalizációs jelként.</div>
+        </article>
+        <article class="cost-card light">
+          <div class="card-topline">
+            <div class="cost-label">GHL lead</div>
+            <span class="signal {% if decision_report.kpi_statuses.ghl_lead == 'OK' %}signal-ok{% elif decision_report.kpi_statuses.ghl_lead == 'FIGYELNI' %}signal-watch{% else %}signal-bad{% endif %}">
+              <span class="signal-dot"></span>{{ decision_report.kpi_statuses.ghl_lead }}
+            </span>
+          </div>
+          <div class="cost-value">{{ decision_report.ghl.total_leads }}</div>
+          <div class="cost-sub">Ez a CRM-be ténylegesen bejutott lead.</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>GHL lead állomány</h2>
+          <p>Napi új GHL leadek és a teljes GHL-ben lévő leadállomány státusz szerint.</p>
+        </div>
+      </div>
+      <div class="period-summary">
+        <article class="period-tile">
+          <div class="tile-label">Napi GHL lead</div>
+          <div class="tile-value">{{ decision_report.ghl.total_leads }}</div>
+          <div class="tile-sub">Aznap CRM-be ténylegesen bejutott lead</div>
+        </article>
+        {% for row in decision_report.ghl.by_status %}
+        <article class="period-tile">
+          <div class="tile-label">Napi: {{ row.status_label|default(row.status) }}</div>
+          <div class="tile-value">{{ row.count }}</div>
+          <div class="tile-sub">Aznap létrejött lead ebből a státuszból</div>
+        </article>
+        {% else %}
+        <article class="period-tile">
+          <div class="tile-label">Napi státusz</div>
+          <div class="tile-value">0</div>
+          <div class="tile-sub">Nem jött létre új GHL lead ezen a napon</div>
+        </article>
+        {% endfor %}
+        <article class="period-tile">
+          <div class="tile-label">Teljes GHL állomány</div>
+          <div class="tile-value">{{ decision_report.ghl.current_crm_total }}</div>
+          <div class="tile-sub">Minden jelenleg elérhető GHL lead/kontakt</div>
+        </article>
+        {% for row in decision_report.ghl.current_crm_by_status %}
+        <article class="period-tile">
+          <div class="tile-label">Teljes: {{ row.status_label|default(row.status) }}</div>
+          <div class="tile-value">{{ row.count }}</div>
+          <div class="tile-sub">Aktuális GHL állomány ebből a státuszból</div>
+        </article>
+        {% endfor %}
+        <article class="period-tile">
+          <div class="tile-label">Forrás nélküli lead</div>
+          <div class="tile-value">{{ decision_report.ghl.unattributed_leads }}</div>
+          <div class="tile-sub">Landing URL nélkül került be GHL-be</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>GHL delegálás</h2>
+          <p>Teljes aktuális GHL leadállomány személyhez delegálva. A státusz bontás a GHL funnel-státusz mezőből készül; a pipeline stage-ek részletesebb munkafázisok, nem tiszta Új/Foglalt/Megjelent/Lezárt kategóriák.</p>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Delegált</th>
+              <th>Összes</th>
+              <th>Új</th>
+              <th>Foglalt</th>
+              <th>Megjelent</th>
+              <th>Lezárt</th>
+              <th>Státusz nélkül</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in decision_report.ghl.current_crm_by_owner %}
+            <tr>
+              <td>{{ row.owner_label }}</td>
+              <td>{{ row.total }}</td>
+              <td>{{ row.new }}</td>
+              <td>{{ row.booked }}</td>
+              <td>{{ row.showed }}</td>
+              <td>{{ row.closed }}</td>
+              <td>{{ row.unknown }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7">Nincs GHL owner/delegálás adat.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Meta tanulási események</h2>
+          <p>Ezek azok az események és értékek, amelyeket a Meta az adott napra lát a 1211587743215376 adathalmazon.</p>
+        </div>
+      </div>
+      <div class="learning-grid">
+        {% for event in decision_report.meta.learning_events %}
+        <article class="learning-card">
+          <div class="event-label">{{ event.label }}</div>
+          <div class="event-value">{{ event.count }}<span>{{ event.value|int }} Ft összérték</span></div>
+          <div class="event-sub">{{ event.meaning }}</div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Hirdetéssorozat döntés</h2>
+          <p>Ad set szintű döntési nézet. A fő optimalizációs jel itt a CompleteRegistration.</p>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table class="adset-table">
+          <thead>
+            <tr>
+              <th>Hirdetéssorozat</th>
+              <th>Döntés</th>
+              <th>Költés</th>
+              <th>Landing view</th>
+              <th>CompleteReg.</th>
+              <th>CPL</th>
+              <th>Click → landing</th>
+              <th>Értelmezés</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in decision_report.meta.adsets %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td><span class="decision-pill">{{ row.decision }}</span></td>
+              <td>{{ row.spend|int }} Ft</td>
+              <td>{{ row.landing_page_views }}</td>
+              <td>{{ row.registration_leads }}</td>
+              <td>{% if row.registration_leads > 0 %}{{ row.cost_per_meta_conversion|int }} Ft{% else %}N/A{% endif %}</td>
+              <td>{{ row.click_to_landing_pct }}%</td>
+              <td>{{ row.evaluation }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="8">Nincs elérhető Meta hirdetéssorozat adat erre a napra.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>GHL lead forrás</h2>
+          <p>Napi GHL leadek landing URL szerint.</p>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Landing URL</th>
+              <th>Lead count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in decision_report.ghl.by_landing %}
+            <tr>
+              <td>{{ row.landing_url }}</td>
+              <td>{{ row.lead_count }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="2">Nincs GHL lead landing forrással ezen a napon.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Landing kontroll</h2>
+          <p>GA4 oldalforgalmi kontroll. Ez nem ugyanaz a definíció, mint a Meta attribúciós konverzió.</p>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Landing URL</th>
+              <th>Page view</th>
+              <th>Users</th>
+              <th>Aktív idő / user</th>
+              <th>Engagement rate</th>
+              <th>Booking users</th>
+              <th>Thank-you users</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in decision_report.landing %}
+            <tr>
+              <td>{{ row.landing_url }}</td>
+              <td>{{ row.page_view }}</td>
+              <td>{{ row.users }}</td>
+              <td>{{ row.average_engagement_time }} mp</td>
+              <td>{{ row.engagement_rate }}%</td>
+              <td>{{ row.booking_users }}</td>
+              <td>{{ row.thank_you_users }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7">Nincs GA4 landing adat erre a napra.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Mérési kontroll</h2>
+          <p>Nem riasztás, hanem diagnosztika: Meta, GA4 és GHL különböző definíciókból dolgozik.</p>
+        </div>
+      </div>
+      <div class="diagnosis-grid">
+        <article class="diagnosis-card">
+          <div class="diagnosis-title">Meta CompleteRegistration vs GHL lead</div>
+          <span class="status {% if decision_report.diagnosis.meta_lead_vs_ghl_lead == 'OK' %}status-ok{% else %}status-watch{% endif %}">{{ decision_report.diagnosis.meta_lead_vs_ghl_lead }}</span>
+          <div class="diagnosis-text">{{ decision_report.calculated.meta_lead_vs_ghl_lead_delta_pct }}% eltérés</div>
+        </article>
+        <article class="diagnosis-card">
+          <div class="diagnosis-title">Meta CompleteRegistration vs GA4 thank-you</div>
+          <span class="status {% if decision_report.diagnosis.meta_lead_vs_ga4_thank_you == 'OK' %}status-ok{% else %}status-watch{% endif %}">{{ decision_report.diagnosis.meta_lead_vs_ga4_thank_you }}</span>
+          <div class="diagnosis-text">{{ decision_report.calculated.meta_lead_vs_ga4_thank_you_delta_pct }}% eltérés</div>
+        </article>
+        <article class="diagnosis-card">
+          <div class="diagnosis-title">Meta landing vs GA4 page view</div>
+          <span class="status {% if decision_report.diagnosis.meta_landing_vs_ga4_page_view == 'OK' %}status-ok{% else %}status-watch{% endif %}">{{ decision_report.diagnosis.meta_landing_vs_ga4_page_view }}</span>
+          <div class="diagnosis-text">{{ decision_report.calculated.meta_landing_vs_ga4_page_view_delta_pct }}% eltérés</div>
+        </article>
+        <article class="diagnosis-card">
+          <div class="diagnosis-title">Összállapot</div>
+          <span class="status {% if decision_report.diagnosis.overall_status == 'OK' %}status-ok{% else %}status-watch{% endif %}">{{ decision_report.diagnosis.overall_status }}</span>
+          <div class="diagnosis-text">{{ decision_report.diagnosis.text }}</div>
+        </article>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

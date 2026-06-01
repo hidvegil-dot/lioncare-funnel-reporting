@@ -1,0 +1,59 @@
+name: Daily Funnel Report
+
+on:
+  schedule:
+    # GitHub Actions schedules are UTC. This runs at both possible UTC
+    # offsets for 06:00 Europe/Budapest, then the guard step below keeps
+    # only the one that is actually 06:00 locally.
+    - cron: "0 4,5 * * *"
+  workflow_dispatch:
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+      GA4_CREDENTIALS_PATH: ${{ github.workspace }}/ga4-service-account.json
+      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      META_CAMPAIGN_ID: ${{ secrets.META_CAMPAIGN_ID }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/google-service-account.json
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+      GOOGLE_DRIVE_ROOT_FOLDER_NAME: ${{ secrets.GOOGLE_DRIVE_ROOT_FOLDER_NAME }}
+      DRIVE_UPLOAD_AUTH_MODE: oauth
+      GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_PATH: ${{ github.workspace }}/google-drive-oauth-client-secret.json
+      GOOGLE_DRIVE_OAUTH_TOKEN_PATH: ${{ github.workspace }}/google-drive-oauth-token.json
+      REPORT_HISTORY_ENABLED: "true"
+      REPORT_DRIVE_UPLOAD_ENABLED: "true"
+    steps:
+      - name: Budapest 06:00 guard
+        id: budapest_time
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$(TZ=Europe/Budapest date +%H)" = "06" ]; then
+            echo "run_report=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_report=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.budapest_time.outputs.run_report == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.budapest_time.outputs.run_report == 'true'
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+        if: steps.budapest_time.outputs.run_report == 'true'
+      - name: Write Google credentials
+        if: steps.budapest_time.outputs.run_report == 'true'
+        run: |
+          printf '%s' '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > google-service-account.json
+          printf '%s' '${{ secrets.GA4_SERVICE_ACCOUNT_JSON }}' > ga4-service-account.json
+          printf '%s' '${{ secrets.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON }}' > google-drive-oauth-client-secret.json
+          printf '%s' '${{ secrets.GOOGLE_DRIVE_OAUTH_TOKEN_JSON }}' > google-drive-oauth-token.json
+      - name: Run daily report
+        if: steps.budapest_time.outputs.run_report == 'true'
+        run: python run_daily_funnel_report.py

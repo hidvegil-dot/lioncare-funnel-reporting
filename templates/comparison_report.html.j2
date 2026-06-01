@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --page-bg: #f4f1ea;
+      --surface: #ffffff;
+      --surface-soft: #faf8f3;
+      --ink: #21303d;
+      --muted: #6b7280;
+      --line: #ddd5c6;
+      --line-strong: #ccb58a;
+      --navy: #14304d;
+      --navy-soft: #1b3d61;
+      --gold: #c9a55a;
+      --gold-soft: #e5d1a0;
+      --good: #2f6f4f;
+      --bad: #a53b3b;
+      --flat: #72808d;
+      --radius: 16px;
+      --shadow: 0 10px 28px rgba(20, 48, 77, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--page-bg);
+    }
+
+    .page {
+      width: 1120px;
+      margin: 16px auto;
+      background: var(--surface);
+      border: 1px solid rgba(201, 165, 90, 0.18);
+      box-shadow: 0 18px 40px rgba(20, 48, 77, 0.08);
+      padding: 22px 28px 24px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--line);
+    }
+
+    .header-mark {
+      width: 74px;
+      height: 74px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #183754 0%, #102841 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex: 0 0 74px;
+    }
+
+    .header-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.12;
+      color: var(--navy);
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 700;
+    }
+
+    .header-meta {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .section {
+      margin-top: 22px;
+      page-break-inside: avoid;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.15;
+      color: var(--navy);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .section-header p,
+    .section-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .funnel-strip {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, #ffffff 0%, #f9fbfd 100%);
+      box-shadow: 0 8px 24px rgba(20, 48, 77, 0.05);
+    }
+
+    .funnel-step {
+      text-align: center;
+    }
+
+    .funnel-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .funnel-value {
+      font-size: 26px;
+      line-height: 1;
+      color: var(--navy);
+      font-weight: 700;
+      margin-bottom: 4px;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .funnel-rate {
+      font-size: 13px;
+      color: var(--gold);
+      font-weight: 700;
+    }
+
+    .funnel-arrow {
+      text-align: center;
+      font-size: 22px;
+      color: var(--gold);
+      font-weight: 700;
+    }
+
+    .kpi-card,
+    .user-card {
+      background: linear-gradient(180deg, var(--navy-soft) 0%, var(--navy) 100%);
+      color: var(--gold);
+      border: 1px solid rgba(201, 165, 90, 0.45);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .kpi-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      height: 160px;
+      text-align: center;
+    }
+
+    .quick-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .quick-kpi-card {
+      position: relative;
+      background: linear-gradient(180deg, var(--navy-soft) 0%, var(--navy) 100%);
+      color: var(--gold);
+      border: 1px solid rgba(201, 165, 90, 0.45);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 22px 18px;
+      min-height: 150px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .quick-kpi-status {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .quick-kpi-status-ok {
+      background: rgba(57, 138, 94, 0.22);
+      color: #d8f5e5;
+    }
+
+    .quick-kpi-status-watch {
+      background: rgba(212, 175, 89, 0.24);
+      color: #fff1bf;
+    }
+
+    .quick-kpi-status-bad {
+      background: rgba(196, 70, 70, 0.24);
+      color: #ffd6d6;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      line-height: 1.35;
+      color: var(--gold-soft);
+      opacity: 0.8;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 44px;
+      line-height: 1;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .kpi-delta {
+      font-size: 16px;
+      line-height: 1.2;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .positive { color: var(--good); }
+    .negative { color: var(--bad); }
+    .neutral { color: var(--flat); }
+
+    .user-grid {
+      display: flex;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .user-card {
+      flex: 1 1 0;
+      padding: 18px;
+      min-height: 212px;
+    }
+
+    .user-card h3 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      color: #fff6df;
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.15;
+    }
+
+    .advisor-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 40px;
+      align-items: start;
+    }
+
+    .kpi-blocks {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .kpi-block {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: stretch;
+      gap: 0;
+      padding: 14px 14px 12px;
+      margin-bottom: 18px;
+      min-height: 112px;
+      border-radius: 10px;
+      background: rgba(9, 23, 37, 0.34);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .kpi-block:last-child {
+      margin-bottom: 0;
+    }
+
+    .kpi-block-label {
+      display: block;
+      min-height: 22px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold-soft);
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 30px;
+    }
+
+    .kpi-block-value-shell {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 34px;
+      margin-bottom: 8px;
+    }
+
+    .kpi-block-value {
+      display: flex;
+      align-items: center;
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--gold);
+    }
+
+    .kpi-block-trend {
+      display: block;
+      min-height: 18px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+      margin-top: auto;
+    }
+
+    .order-block {
+      padding: 0;
+      margin: 0;
+    }
+
+    .order-panel {
+      padding: 0;
+      border-radius: 12px;
+      background: transparent;
+      border: 0;
+      min-height: auto;
+    }
+
+    .order-title {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold-soft);
+      font-weight: 700;
+      line-height: 1.35;
+      margin-bottom: 8px;
+    }
+
+    .metric-order-line {
+      display: block;
+      margin-top: 6px;
+      font-size: 14px;
+      line-height: 1.25;
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    .table-shell {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(20, 48, 77, 0.05);
+      page-break-inside: avoid;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    thead {
+      background: #f3ecde;
+    }
+
+    th {
+      padding: 13px 14px;
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.3;
+      color: var(--navy);
+      font-weight: 700;
+      border-bottom: 1px solid var(--line);
+      vertical-align: bottom;
+    }
+
+    td {
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.4;
+      border-bottom: 1px solid #ece6db;
+      color: var(--ink);
+      vertical-align: middle;
+    }
+
+    tbody tr:nth-child(even) {
+      background: var(--surface-soft);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .num,
+    .pct,
+    .trend,
+    .center {
+      text-align: center;
+    }
+
+    .metric-col {
+      width: 28%;
+    }
+
+    .user-col {
+      width: 16%;
+    }
+
+    .tight-col {
+      width: 7%;
+    }
+
+    .med-col {
+      width: 8%;
+    }
+
+    .trend-up { color: var(--good); font-weight: 700; }
+    .trend-down { color: var(--bad); font-weight: 700; }
+    .trend-flat { color: var(--flat); font-weight: 700; }
+
+    .period-summary {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .period-tile {
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    .period-tile .tile-label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .period-tile .tile-value {
+      font-size: 28px;
+      line-height: 1;
+      color: var(--navy);
+      font-weight: 700;
+    }
+
+    @media print {
+      body { background: #fff; }
+      .page {
+        width: auto;
+        margin: 0;
+        box-shadow: none;
+        border: 0;
+        padding: 8mm 8mm;
+      }
+      .section {
+        break-inside: avoid;
+      }
+      .table-shell {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-mark">
+        <img src="2lion.png" alt="LionCare logo">
+      </div>
+      <div>
+        <div class="eyebrow">Heti vezetői riport</div>
+        <h1>{{ title }}</h1>
+        <div class="header-meta">Időszak: {{ start_date }} - {{ end_date }}</div>
+      </div>
+    </header>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Aktuális időszak</h2>
+          <p>Aktuális időszak: {{ comparison.current_period.label }}</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        {% for card in comparison.primary_cards %}
+        <article class="kpi-card">
+          <div class="kpi-label">{{ card.title }}</div>
+          <div class="kpi-value">{{ card.value }}</div>
+          <div class="kpi-delta {% if card.direction == 'up' %}positive{% elif card.direction == 'down' %}negative{% else %}neutral{% endif %}">
+            {% if card.direction == 'up' %}↑{% elif card.direction == 'down' %}↓{% else %}→{% endif %}
+            {% if card.pct_change is none %}n/a{% else %}{{ card.pct_change }}%{% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% if comparison.quick_snapshot %}
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Gyors összkép</h2>
+          <p>A napi riport mintájára az aktuális időszak fő KPI-jai.</p>
+        </div>
+      </div>
+      <div class="quick-kpi-grid">
+        {% for tile in comparison.quick_snapshot %}
+        <article class="quick-kpi-card">
+          <span class="quick-kpi-status {% if tile.status == 'OK' %}quick-kpi-status-ok{% elif tile.status == 'FIGYELNI' %}quick-kpi-status-watch{% else %}quick-kpi-status-bad{% endif %}">{{ tile.status }}</span>
+          <div class="kpi-label">{{ tile.label }}</div>
+          <div class="kpi-value">{{ tile.value }}</div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if comparison.ga4_landing and comparison.ga4_landing.cards %}
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>GA4 landing funnel</h2>
+          <p>{{ comparison.ga4_landing.current_period.label }} | előző: {{ comparison.ga4_landing.previous_period.label }}</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        {% for card in comparison.ga4_landing.cards %}
+        <article class="kpi-card">
+          <div class="kpi-label">{{ card.title }}</div>
+          <div class="kpi-value">{{ card.value }}</div>
+          <div class="kpi-delta {% if card.direction == 'up' %}positive{% elif card.direction == 'down' %}negative{% else %}neutral{% endif %}">
+            {% if card.direction == 'up' %}↑{% elif card.direction == 'down' %}↓{% else %}→{% endif %}
+            {% if card.pct_change is none %}n/a{% else %}{{ card.pct_change }}%{% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if meta_data %}
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Meta Ads összesítő</h2>
+          <p>{{ start_date }} - {{ end_date }}</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <article class="kpi-card">
+          <div class="kpi-label">KÖLTÉS</div>
+          <div class="kpi-value">{{ meta_data.summary.spend }}</div>
+          <div class="kpi-delta neutral">spend</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">LANDING PAGE VIEW</div>
+          <div class="kpi-value">{{ meta_data.summary.landing_page_views }}</div>
+          <div class="kpi-delta neutral">Meta</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">LEADS</div>
+          <div class="kpi-value">{{ meta_data.summary.leads }}</div>
+          <div class="kpi-delta neutral">
+            {% if meta_data.summary.cost_per_lead %}CPL {{ meta_data.summary.cost_per_lead }}{% else %}n/a{% endif %}
+          </div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">KATTINTÁS</div>
+          <div class="kpi-value">{{ meta_data.summary.clicks }}</div>
+          <div class="kpi-delta neutral">CTR {{ meta_data.summary.ctr }}%</div>
+        </article>
+        <article class="kpi-card">
+          <div class="kpi-label">MEGJELENÉS</div>
+          <div class="kpi-value">{{ meta_data.summary.impressions }}</div>
+          <div class="kpi-delta neutral">CPC {{ meta_data.summary.cpc }}</div>
+        </article>
+      </div>
+    </section>
+
+    {% if comparison.ghl_status_comparison and comparison.ghl_status_comparison.rows %}
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>GHL lead státusz bontás</h2>
+          <p>{{ comparison.ghl_status_comparison.current_label }} | előző: {{ comparison.ghl_status_comparison.previous_label }}</p>
+        </div>
+      </div>
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Lead státusz</th>
+              <th class="center">Aktuális</th>
+              <th class="center">Előző</th>
+              <th class="center">Delta</th>
+              <th class="center">Változás</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in comparison.ghl_status_comparison.rows %}
+            <tr>
+              <td>{{ row.status_label }}</td>
+              <td class="center">{{ row.current }}</td>
+              <td class="center">{{ row.previous }}</td>
+              <td class="center">{{ row.delta }}</td>
+              <td class="center">
+                {% if row.direction == 'up' %}↑{% elif row.direction == 'down' %}↓{% else %}→{% endif %}
+                {% if row.pct_change is none %}n/a{% else %}{{ row.pct_change }}%{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+    {% endif %}
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Funnel áttekintés</h2>
+          <p>A heti funnel teljesítmény fő lépései és konverziói</p>
+        </div>
+      </div>
+      <div class="funnel-strip">
+        <div class="funnel-step">
+          <div class="funnel-label">Lead</div>
+          <div class="funnel-value">{{ comparison.current_period.summary.new_leads }}</div>
+          <div class="funnel-rate">&nbsp;</div>
+        </div>
+        <div class="funnel-arrow">→</div>
+        <div class="funnel-step">
+          <div class="funnel-label">Foglalás</div>
+          <div class="funnel-value">{{ comparison.current_period.summary.booked_leads }}</div>
+          <div class="funnel-rate">{{ comparison.current_period.summary.lead_to_booking_pct }}%</div>
+        </div>
+        <div class="funnel-arrow">→</div>
+        <div class="funnel-step">
+          <div class="funnel-label">Megjelent</div>
+          <div class="funnel-value">{{ comparison.current_period.summary.showed_leads }}</div>
+          <div class="funnel-rate">{{ comparison.current_period.summary.booking_to_show_pct }}%</div>
+        </div>
+        <div class="funnel-arrow">→</div>
+        <div class="funnel-step">
+          <div class="funnel-label">Szerződés</div>
+          <div class="funnel-value">{{ comparison.current_period.summary.closed_leads }}</div>
+          <div class="funnel-rate">{{ comparison.current_period.summary.show_to_close_pct }}%</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Hogyan működünk</h2>
+          <p>Az aktuális időszak fő konverziós arányai.</p>
+        </div>
+      </div>
+      <div class="period-summary">
+        <article class="period-tile">
+          <div class="tile-label">Lead → foglalás</div>
+          <div class="tile-value">{{ comparison.current_period.summary.lead_to_booking_pct }}%</div>
+          <div class="tile-sub">{{ comparison.current_period.summary.new_leads }} leadből {{ comparison.current_period.summary.booked_leads }} foglalás lett.</div>
+        </article>
+        <article class="period-tile">
+          <div class="tile-label">Foglalás → megjelent</div>
+          <div class="tile-value">{{ comparison.current_period.summary.booking_to_show_pct }}%</div>
+          <div class="tile-sub">{{ comparison.current_period.summary.booked_leads }} foglalásból {{ comparison.current_period.summary.showed_leads }} megjelenés lett.</div>
+        </article>
+        <article class="period-tile">
+          <div class="tile-label">Megjelent → szerződés</div>
+          <div class="tile-value">{{ comparison.current_period.summary.show_to_close_pct }}%</div>
+          <div class="tile-sub">{{ comparison.current_period.summary.showed_leads }} megjelentből {{ comparison.current_period.summary.closed_leads }} szerződés lett.</div>
+        </article>
+      </div>
+    </section>
+
+    {% if user_meeting_comparison and user_meeting_comparison.cards %}
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Tanácsadói teljesítmény</h2>
+          <p>Az aktuális időszak tanácsadói eredményei és meeting megoszlása</p>
+        </div>
+      </div>
+      <div class="user-grid">
+        {% for card in user_meeting_comparison.cards %}
+        <article class="user-card">
+          <h3>{{ card.user_label }}</h3>
+          <div class="advisor-grid">
+            <div class="kpi-blocks">
+              <div class="kpi-block">
+                <span class="kpi-block-label">Foglalások</span>
+                <div class="kpi-block-value-shell">
+                  <strong class="kpi-block-value">{{ card.booked_value }}</strong>
+                </div>
+                <small class="kpi-block-trend {% if card.booked_direction == 'up' %}positive{% elif card.booked_direction == 'down' %}negative{% else %}neutral{% endif %}">
+                  {% if card.booked_direction == 'up' %}↑{% elif card.booked_direction == 'down' %}↓{% else %}→{% endif %}
+                  {% if card.booked_pct_change is none %}n/a{% else %}{{ card.booked_pct_change }}%{% endif %}
+                </small>
+              </div>
+              <div class="kpi-block">
+                <span class="kpi-block-label">Megjelentek</span>
+                <div class="kpi-block-value-shell">
+                  <strong class="kpi-block-value">{{ card.showed_value }}</strong>
+                </div>
+                <small class="kpi-block-trend {% if card.showed_direction == 'up' %}positive{% elif card.showed_direction == 'down' %}negative{% else %}neutral{% endif %}">
+                  {% if card.showed_direction == 'up' %}↑{% elif card.showed_direction == 'down' %}↓{% else %}→{% endif %}
+                  {% if card.showed_pct_change is none %}n/a{% else %}{{ card.showed_pct_change }}%{% endif %}
+                </small>
+              </div>
+            </div>
+            <div class="order-block">
+              <div class="order-panel">
+                <span class="order-title">Megoszlás</span>
+                <div class="metric-order-line">1. alkalom: {{ card.current_first_meeting_showed }}</div>
+                <div class="metric-order-line">2. alkalom: {{ card.current_second_meeting_showed }}</div>
+                <div class="metric-order-line">3. alkalom: {{ card.current_thirdplus_meeting_showed }}</div>
+                <div class="metric-order-line">Nem jelent meg: {{ card.no_show_value }}</div>
+                <div class="metric-order-line">Törölt / lemondott: {{ card.cancelled_value }}</div>
+              </div>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </div>
+</body>
+</html>

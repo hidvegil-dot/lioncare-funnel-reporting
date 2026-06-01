@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+
+
+logger = logging.getLogger(__name__)
+
+SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+
+
+class GoogleSheetsClient:
+    def __init__(self, credentials_path: str, spreadsheet_id: str) -> None:
+        credentials = service_account.Credentials.from_service_account_file(
+            credentials_path,
+            scopes=[SHEETS_SCOPE],
+        )
+        self.spreadsheet_id = spreadsheet_id
+        self.service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+
+    def ensure_tabs(self, tabs: dict[str, list[str]]) -> None:
+        spreadsheet = (
+            self.service.spreadsheets()
+            .get(spreadsheetId=self.spreadsheet_id, fields="sheets(properties(title))")
+            .execute()
+        )
+        existing_titles = {
+            sheet["properties"]["title"]
+            for sheet in spreadsheet.get("sheets", [])
+            if "properties" in sheet
+        }
+
+        requests: list[dict[str, Any]] = []
+        for title in tabs:
+            if title not in existing_titles:
+                logger.info("Creating Google Sheets tab title=%s", title)
+                requests.append({"addSheet": {"properties": {"title": title}}})
+
+        if requests:
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body={"requests": requests},
+            ).execute()
+
+        for title, headers in tabs.items():
+            self._ensure_header(title=title, headers=headers)
+
+    def append_row(self, *, tab_name: str, values: list[Any]) -> None:
+        logger.info("Appending Google Sheets row tab=%s", tab_name)
+        self.service.spreadsheets().values().append(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{tab_name}'!A1",
+            valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [values]},
+        ).execute()
+
+    def replace_date_rows(self, *, tab_name: str, date_value: str, rows: list[list[Any]]) -> None:
+        """Replace all rows for one report date so re-runs do not duplicate history."""
+        logger.info(
+            "Replacing Google Sheets rows tab=%s date=%s row_count=%s",
+            tab_name,
+            date_value,
+            len(rows),
+        )
+        range_name = f"'{tab_name}'!A:Z"
+        response = (
+            self.service.spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range=range_name)
+            .execute()
+        )
+        values = response.get("values", [])
+        header = values[:1]
+        existing_rows = values[1:]
+        kept_rows = [
+            row
+            for row in existing_rows
+            if not row or str(row[0]) != date_value
+        ]
+        next_values = header + kept_rows + rows
+
+        self.service.spreadsheets().values().clear(
+            spreadsheetId=self.spreadsheet_id,
+            range=range_name,
+            body={},
+        ).execute()
+        if next_values:
+            self.service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"'{tab_name}'!A1",
+                valueInputOption="USER_ENTERED",
+                body={"values": next_values},
+            ).execute()
+
+    def _ensure_header(self, *, title: str, headers: list[str]) -> None:
+        response = (
+            self.service.spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range=f"'{title}'!A1:Z1")
+            .execute()
+        )
+        current = response.get("values", [[]])
+        if current and current[0] == headers:
+            return
+
+        logger.info("Writing Google Sheets header tab=%s", title)
+        self.service.spreadsheets().values().update(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{title}'!A1",
+            valueInputOption="RAW",
+            body={"values": [headers]},
+        ).execute()

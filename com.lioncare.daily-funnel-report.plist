@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lioncare.daily-funnel-report</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/hidvegi/Library/CloudStorage/OneDrive-Személyes/ROAR/LionCare/CODEX/LionCare report/run_daily_funnel_report.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/hidvegi/Library/CloudStorage/OneDrive-Személyes/ROAR/LionCare/CODEX/LionCare report</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPYCACHEPREFIX</key>
+    <string>/Users/hidvegi/Documents/New project/.pycache</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/hidvegi/Library/CloudStorage/OneDrive-Személyes/ROAR/LionCare/CODEX/LionCare report/launchd_daily_report.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/hidvegi/Library/CloudStorage/OneDrive-Személyes/ROAR/LionCare/CODEX/LionCare report/launchd_daily_report.err.log</string>
+</dict>
+</plist>
