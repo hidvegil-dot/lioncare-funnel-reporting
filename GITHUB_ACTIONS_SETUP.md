@@ -65,6 +65,8 @@ It can also be started manually from:
 
 `GitHub repo -> Actions -> Daily Funnel Report -> Run workflow`
 
+Manual runs can optionally receive a `report_date` input in `YYYY-MM-DD` format. Leave it empty to generate yesterday's report in `Europe/Budapest`.
+
 ## 4. Expected Result
 
 Every successful run should:
@@ -76,4 +78,3 @@ Every successful run should:
   - `daily_summary`
   - `adset_daily`
   - `ghl_status_daily`
-

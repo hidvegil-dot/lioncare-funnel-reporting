@@ -7,12 +7,22 @@ on:
     # only the one that is actually 06:00 locally.
     - cron: "0 4,5 * * *"
   workflow_dispatch:
+    inputs:
+      report_date:
+        description: "Optional report date in YYYY-MM-DD format. Empty means yesterday in Europe/Budapest."
+        required: false
+        type: string
+
+concurrency:
+  group: daily-funnel-report
+  cancel-in-progress: false
 
 jobs:
   daily-report:
     runs-on: ubuntu-latest
     env:
       TZ: Europe/Budapest
+      REPORT_DATE: ${{ inputs.report_date }}
       GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
       GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
       GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
@@ -28,6 +38,10 @@ jobs:
       DRIVE_UPLOAD_AUTH_MODE: oauth
       GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_PATH: ${{ github.workspace }}/google-drive-oauth-client-secret.json
       GOOGLE_DRIVE_OAUTH_TOKEN_PATH: ${{ github.workspace }}/google-drive-oauth-token.json
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GA4_SERVICE_ACCOUNT_JSON: ${{ secrets.GA4_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON: ${{ secrets.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON }}
+      GOOGLE_DRIVE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_DRIVE_OAUTH_TOKEN_JSON }}
       REPORT_HISTORY_ENABLED: "true"
       REPORT_DRIVE_UPLOAD_ENABLED: "true"
     steps:
@@ -47,13 +61,55 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt
         if: steps.budapest_time.outputs.run_report == 'true'
+      - name: Validate required secrets
+        if: steps.budapest_time.outputs.run_report == 'true'
+        run: |
+          missing=0
+          for name in \
+            GHL_API_KEY \
+            GHL_LOCATION_ID \
+            GHL_BASE_URL \
+            GHL_API_VERSION \
+            GA4_PROPERTY_ID \
+            GA4_SERVICE_ACCOUNT_JSON \
+            META_AD_ACCOUNT_ID \
+            META_ACCESS_TOKEN \
+            META_CAMPAIGN_ID \
+            GOOGLE_SERVICE_ACCOUNT_JSON \
+            GOOGLE_SHEET_ID \
+            GOOGLE_DRIVE_ROOT_FOLDER_NAME \
+            GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON \
+            GOOGLE_DRIVE_OAUTH_TOKEN_JSON
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            fi
+          done
+          exit "$missing"
       - name: Write Google credentials
         if: steps.budapest_time.outputs.run_report == 'true'
         run: |
-          printf '%s' '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > google-service-account.json
-          printf '%s' '${{ secrets.GA4_SERVICE_ACCOUNT_JSON }}' > ga4-service-account.json
-          printf '%s' '${{ secrets.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON }}' > google-drive-oauth-client-secret.json
-          printf '%s' '${{ secrets.GOOGLE_DRIVE_OAUTH_TOKEN_JSON }}' > google-drive-oauth-token.json
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > google-service-account.json
+          printf '%s' "$GA4_SERVICE_ACCOUNT_JSON" > ga4-service-account.json
+          printf '%s' "$GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON" > google-drive-oauth-client-secret.json
+          printf '%s' "$GOOGLE_DRIVE_OAUTH_TOKEN_JSON" > google-drive-oauth-token.json
+          chmod 600 google-service-account.json ga4-service-account.json google-drive-oauth-client-secret.json google-drive-oauth-token.json
       - name: Run daily report
         if: steps.budapest_time.outputs.run_report == 'true'
-        run: python run_daily_funnel_report.py
+        run: |
+          if [ -n "${REPORT_DATE:-}" ]; then
+            python main.py --report-type daily --start-date "$REPORT_DATE" --end-date "$REPORT_DATE"
+          else
+            python run_daily_funnel_report.py
+          fi
+      - name: Upload report artifacts
+        if: steps.budapest_time.outputs.run_report == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-funnel-report
+          if-no-files-found: ignore
+          path: |
+            daily_funnel_report.html
+            daily_funnel_report.csv
+            report_run.log
