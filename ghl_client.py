@@ -208,7 +208,7 @@ class GHLClient:
                 return self._request("POST", "/contacts/search", json=payload)
             except GHLAPIError as exc:
                 last_error = exc
-                if exc.status_code != 422:
+                if exc.status_code not in {400, 422}:
                     raise
 
         raise last_error or GHLAPIError("Contacts search failed without a specific API error")
@@ -228,10 +228,25 @@ class GHLClient:
                 "page": page,
                 "filters": [],
             },
+            {
+                "locationId": self.config.location_id,
+                "page": page,
+                "limit": self.config.page_limit,
+            },
+            {
+                "page": page,
+                "pageLimit": self.config.page_limit,
+            },
+            {
+                "page": page,
+                "limit": self.config.page_limit,
+            },
         ]
 
         if page == 1:
             variants.append(dict(base_payload))
+            variants.append({"pageLimit": self.config.page_limit})
+            variants.append({"limit": self.config.page_limit})
 
         return variants
 
@@ -599,8 +614,15 @@ class GHLClient:
                     break
                 time.sleep(self.config.retry_backoff_seconds * attempt)
 
-        status_code = getattr(getattr(last_error, "response", None), "status_code", None)
+        response = getattr(last_error, "response", None)
+        status_code = getattr(response, "status_code", None)
+        response_text = ""
+        if response is not None:
+            response_text = (response.text or "").strip()
+            if len(response_text) > 500:
+                response_text = f"{response_text[:500]}..."
+        response_context = f" Response: {response_text}" if response_text else ""
         raise GHLAPIError(
-            f"GHL API request failed for {method} {path}: {last_error}",
+            f"GHL API request failed for {method} {path}: {last_error}.{response_context}",
             status_code=status_code,
         ) from last_error
