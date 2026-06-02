@@ -50,7 +50,7 @@ class GHLConfig:
         if not location_id:
             raise ValueError("Missing GHL_LOCATION_ID environment variable")
 
-        base_url = os.getenv("GHL_BASE_URL", cls.base_url).strip() or cls.base_url
+        base_url = cls._normalize_base_url(os.getenv("GHL_BASE_URL", cls.base_url).strip() or cls.base_url)
         api_version = os.getenv("GHL_API_VERSION", cls.api_version).strip() or cls.api_version
         debug = os.getenv("GHL_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
         return cls(
@@ -60,6 +60,16 @@ class GHLConfig:
             api_version=api_version,
             debug=debug,
         )
+
+    @staticmethod
+    def _normalize_base_url(base_url: str) -> str:
+        parsed = urlparse(base_url)
+        if not parsed.scheme:
+            base_url = f"https://{base_url}"
+            parsed = urlparse(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError(f"Invalid GHL_BASE_URL environment variable: {base_url!r}")
+        return base_url.rstrip("/")
 
 
 class GHLClient:
