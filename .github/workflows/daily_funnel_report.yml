@@ -69,7 +69,6 @@ jobs:
             GHL_API_KEY \
             GHL_LOCATION_ID \
             GHL_BASE_URL \
-            GHL_API_VERSION \
             GA4_PROPERTY_ID \
             GA4_SERVICE_ACCOUNT_JSON \
             META_AD_ACCOUNT_ID \

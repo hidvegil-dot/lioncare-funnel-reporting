@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -51,7 +52,7 @@ class GHLConfig:
             raise ValueError("Missing GHL_LOCATION_ID environment variable")
 
         base_url = cls._normalize_base_url(os.getenv("GHL_BASE_URL", cls.base_url).strip() or cls.base_url)
-        api_version = os.getenv("GHL_API_VERSION", cls.api_version).strip() or cls.api_version
+        api_version = cls._normalize_api_version(os.getenv("GHL_API_VERSION", cls.api_version).strip())
         debug = os.getenv("GHL_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
         return cls(
             api_key=api_key,
@@ -70,6 +71,16 @@ class GHLConfig:
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError(f"Invalid GHL_BASE_URL environment variable: {base_url!r}")
         return base_url.rstrip("/")
+
+    @classmethod
+    def _normalize_api_version(cls, api_version: str) -> str:
+        api_version = api_version.strip().strip("'\"")
+        if not api_version:
+            return cls.api_version
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", api_version):
+            return api_version
+        logger.warning("Invalid GHL_API_VERSION %r; falling back to %s", api_version, cls.api_version)
+        return cls.api_version
 
 
 class GHLClient:

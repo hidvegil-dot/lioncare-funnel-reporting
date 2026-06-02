@@ -20,7 +20,6 @@ Required secrets:
 GHL_API_KEY
 GHL_LOCATION_ID
 GHL_BASE_URL
-GHL_API_VERSION
 GA4_PROPERTY_ID
 GA4_SERVICE_ACCOUNT_JSON
 META_AD_ACCOUNT_ID
@@ -37,9 +36,16 @@ Recommended values:
 
 ```text
 GHL_BASE_URL=https://services.leadconnectorhq.com
-GHL_API_VERSION=2021-07-28
 GOOGLE_DRIVE_ROOT_FOLDER_NAME=LionCare
 ```
+
+Optional secret:
+
+```text
+GHL_API_VERSION=2021-07-28
+```
+
+If `GHL_API_VERSION` is missing, empty, or invalid, the report falls back to `2021-07-28`.
 
 `GOOGLE_SERVICE_ACCOUNT_JSON` and `GA4_SERVICE_ACCOUNT_JSON` should contain the full JSON file content.
 
