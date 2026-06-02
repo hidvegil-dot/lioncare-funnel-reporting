@@ -133,14 +133,24 @@ class GHLClient:
         if self._custom_field_map is not None:
             return self._custom_field_map
 
-        response = self._request(
-            "GET",
-            f"/locations/{self.config.location_id}/customFields",
-        )
-        payload = response.json()
-        raw_fields = payload.get("customFields") or payload.get("fields") or payload.get("data") or []
-
         mapping = {name: {name} for name in EXPECTED_CUSTOM_FIELDS}
+        try:
+            response = self._request(
+                "GET",
+                f"/locations/{self.config.location_id}/customFields",
+            )
+            payload = response.json()
+            raw_fields = payload.get("customFields") or payload.get("fields") or payload.get("data") or []
+        except GHLAPIError as exc:
+            logger.warning(
+                "Could not fetch GHL custom fields for location %s; continuing with default field names. "
+                "Check GHL_LOCATION_ID and token permissions. Error: %s",
+                self.config.location_id,
+                exc,
+            )
+            self._custom_field_map = mapping
+            return mapping
+
         for field in raw_fields:
             candidates = [
                 field.get("name"),
