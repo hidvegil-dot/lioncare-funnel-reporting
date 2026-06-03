@@ -32,6 +32,29 @@ GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON
 GOOGLE_DRIVE_OAUTH_TOKEN_JSON
 ```
 
+Optional OneDrive upload secrets:
+
+```text
+ONEDRIVE_CLIENT_ID
+ONEDRIVE_CLIENT_SECRET
+ONEDRIVE_REFRESH_TOKEN
+ONEDRIVE_UPLOAD_ROOT_PATH
+```
+
+Recommended value:
+
+```text
+ONEDRIVE_UPLOAD_ROOT_PATH=ROAR/LionCare/riport
+```
+
+`ONEDRIVE_CLIENT_SECRET` is optional when the Microsoft app registration is configured as a public client. For a personal Microsoft / Office 365 Family account, use a Microsoft app registration that supports personal Microsoft accounts and generate the refresh token locally:
+
+```bash
+python scripts/onedrive_oauth_init.py
+```
+
+The script writes a local token JSON file. Copy only its `refresh_token` value into the `ONEDRIVE_REFRESH_TOKEN` GitHub Actions secret.
+
 Recommended values:
 
 ```text
@@ -80,6 +103,7 @@ Every successful run should:
 - generate the daily HTML report
 - generate the daily CSV report
 - upload both files to Google Drive under `LionCare/riport/`
+- if OneDrive secrets are configured, upload both files to OneDrive under `ONEDRIVE_UPLOAD_ROOT_PATH`
 - upsert historical rows into the Google Sheet tabs:
   - `daily_summary`
   - `adset_daily`
