@@ -32,12 +32,10 @@ GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON
 GOOGLE_DRIVE_OAUTH_TOKEN_JSON
 ```
 
-Optional OneDrive upload secrets:
+Optional OneDrive upload secrets for Microsoft 365 Family / personal OneDrive:
 
 ```text
-ONEDRIVE_CLIENT_ID
-ONEDRIVE_CLIENT_SECRET
-ONEDRIVE_REFRESH_TOKEN
+RCLONE_CONFIG_ONEDRIVE
 ONEDRIVE_UPLOAD_ROOT_PATH
 ```
 
@@ -47,13 +45,21 @@ Recommended value:
 ONEDRIVE_UPLOAD_ROOT_PATH=ROAR/LionCare/riport
 ```
 
-`ONEDRIVE_CLIENT_SECRET` is optional when the Microsoft app registration is configured as a public client. For a personal Microsoft / Office 365 Family account, use a Microsoft app registration that supports personal Microsoft accounts and generate the refresh token locally:
+Personal Microsoft accounts may not be allowed to create Azure app registrations directly. Use rclone OAuth instead:
 
 ```bash
-python scripts/onedrive_oauth_init.py
+rclone config
 ```
 
-The script writes a local token JSON file. Copy only its `refresh_token` value into the `ONEDRIVE_REFRESH_TOKEN` GitHub Actions secret.
+Create a remote named exactly `onedrive`, choose Microsoft OneDrive, and authorize it with the personal Microsoft account. Then copy the full generated rclone config into the `RCLONE_CONFIG_ONEDRIVE` GitHub Actions secret. It should look like:
+
+```text
+[onedrive]
+type = onedrive
+token = ...
+drive_id = ...
+drive_type = personal
+```
 
 Recommended values:
 

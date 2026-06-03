@@ -131,31 +131,6 @@ def persist_daily_report_history(
         logger.exception("Google Drive upload failed; local report files remain available")
 
     try:
-        from onedrive_client import OneDriveClient
-
-        one_drive = OneDriveClient.from_env_optional()
-        if one_drive is None:
-            logger.info("Skipping OneDrive upload because ONEDRIVE_CLIENT_ID or ONEDRIVE_REFRESH_TOKEN is missing")
-        else:
-            root_path = os.getenv("ONEDRIVE_UPLOAD_ROOT_PATH", "ROAR/LionCare/riport").strip()
-            root_path = root_path.strip("/") or "ROAR/LionCare/riport"
-            html_folder_path = f"{root_path}/daily_html"
-            csv_folder_path = f"{root_path}/daily_csv"
-            one_drive.ensure_folder_path(html_folder_path)
-            one_drive.ensure_folder_path(csv_folder_path)
-            one_drive.upload_file(
-                dated_html_path,
-                remote_path=f"{html_folder_path}/{dated_html_path.name}",
-            )
-            one_drive.upload_file(
-                dated_csv_path,
-                remote_path=f"{csv_folder_path}/{dated_csv_path.name}",
-            )
-            logger.info("Completed OneDrive daily report upload date=%s root_path=%s", report_date, root_path)
-    except Exception:
-        logger.exception("OneDrive upload failed; local report files remain available")
-
-    try:
         from google_sheets_client import GoogleSheetsClient
 
         logger.info("Starting Google Sheets historical upsert date=%s", report_date)
