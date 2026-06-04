@@ -417,6 +417,14 @@ Kézi teszt lokálisan:
 python run_fireflies_meeting_ai.py --lookback-hours 24 --limit 5
 ```
 
+Automatizmus audit lokálisan:
+
+```bash
+python scripts/audit_lioncare_automation.py
+```
+
+Ez read-only ellenőrzést futtat a Google Drive és Google Sheet struktúrán: meeting mappák kötelező fájljai, `meeting_ai_log` duplikációk, kötelező Sheet tabok és kulcsoszlopok. Hibánál nem javít csendben, hanem nem nulla exit kóddal áll meg.
+
 OpenAI API keret nélkül a teljes Drive/Sheet csővezeték tesztelhető mock módban:
 
 ```bash

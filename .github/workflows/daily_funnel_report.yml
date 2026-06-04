@@ -123,10 +123,12 @@ jobs:
           printf '%s' "$RCLONE_CONFIG_ONEDRIVE" > ~/.config/rclone/rclone.conf
           root_path="${ONEDRIVE_UPLOAD_ROOT_PATH:-ROAR/LionCare/riport}"
           report_date="${REPORT_DATE:-$(TZ=Europe/Budapest date -d yesterday +%F)}"
-          rclone mkdir "onedrive:${root_path}/daily_html"
-          rclone mkdir "onedrive:${root_path}/daily_csv"
-          rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${root_path}/daily_html/daily_funnel_report_${report_date}.html"
-          rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${root_path}/daily_csv/daily_funnel_report_${report_date}.csv"
+          year="${report_date:0:4}"
+          month="${report_date:5:2}"
+          daily_path="${root_path}/daily/${year}/${month}/${report_date}"
+          rclone mkdir "onedrive:${daily_path}"
+          rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/daily_funnel_report.html"
+          rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/daily_funnel_report.csv"
       - name: Upload report artifacts
         if: steps.budapest_time.outputs.run_report == 'true' && always()
         uses: actions/upload-artifact@v4

@@ -32,6 +32,10 @@ class GHLAPIError(RuntimeError):
         self.status_code = status_code
 
 
+def _strict_data_enabled() -> bool:
+    return os.getenv("REPORT_DATA_STRICT", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class GHLConfig:
     api_key: str
@@ -158,6 +162,13 @@ class GHLClient:
             payload = response.json()
             raw_fields = payload.get("customFields") or payload.get("fields") or payload.get("data") or []
         except GHLAPIError as exc:
+            if _strict_data_enabled():
+                raise GHLAPIError(
+                    "Could not fetch GHL custom fields in strict data mode. "
+                    "Refusing to continue with default field names because that can corrupt funnel metrics. "
+                    f"Original error: {exc}",
+                    status_code=exc.status_code,
+                ) from exc
             logger.warning(
                 "Could not fetch GHL custom fields for location %s; continuing with default field names. "
                 "Check GHL_LOCATION_ID and token permissions. Error: %s",
@@ -382,7 +393,13 @@ class GHLClient:
             seen_contact_ids.add(contact_id)
             try:
                 contact_appointments = self.fetch_contact_appointments(contact_id)
-            except Exception:
+            except Exception as exc:
+                if _strict_data_enabled():
+                    raise GHLAPIError(
+                        "Could not fetch appointments for contact in strict data mode. "
+                        "Refusing to continue because booking/show metrics would be incomplete. "
+                        f"contact_id={contact_id}; error={exc}"
+                    ) from exc
                 logger.warning("Skipping appointments for contact %s after API error", contact_id, exc_info=True)
                 continue
 

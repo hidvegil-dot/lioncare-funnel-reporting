@@ -45,6 +45,7 @@ jobs:
       REPORT_HISTORY_ENABLED: "true"
       REPORT_DRIVE_UPLOAD_ENABLED: "true"
       REPORT_STORAGE_STRICT: "true"
+      REPORT_DATA_STRICT: "true"
     steps:
       - name: Budapest Monday 07:00 guard
         id: budapest_time
