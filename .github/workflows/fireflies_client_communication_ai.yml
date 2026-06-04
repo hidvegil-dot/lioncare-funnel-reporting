@@ -1,0 +1,80 @@
+name: Fireflies Client Communication AI
+
+on:
+  schedule:
+    # 07:00 Europe/Budapest. GitHub Actions uses UTC; these two UTC hours cover CET/CEST.
+    - cron: "0 5,6 * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_hours:
+        description: "How many hours of Fireflies transcripts to inspect."
+        required: false
+        default: "24"
+        type: string
+
+concurrency:
+  group: fireflies-client-communication-ai
+  cancel-in-progress: false
+
+jobs:
+  meeting-ai:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      FIREFLIES_API_KEY: ${{ secrets.FIREFLIES_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/google-service-account.json
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_DRIVE_ROOT_FOLDER_NAME: ${{ secrets.GOOGLE_DRIVE_ROOT_FOLDER_NAME }}
+      GHL_WRITE_NOTES_ENABLED: "false"
+      GHL_CREATE_TASKS_ENABLED: "false"
+      EMAIL_DRAFT_ENABLED: "false"
+      RAW_TRANSCRIPT_SAVE_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in FIREFLIES_API_KEY OPENAI_API_KEY GOOGLE_SHEET_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            fi
+          done
+          if [ -z "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ] && [ -z "${GOOGLE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "::error title=Missing GitHub secret::GOOGLE_APPLICATION_CREDENTIALS_JSON or GOOGLE_SERVICE_ACCOUNT_JSON is required"
+            missing=1
+          fi
+          exit "$missing"
+      - name: Write Google credentials
+        run: |
+          if [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > google-service-account.json
+          else
+            printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > google-service-account.json
+          fi
+          chmod 600 google-service-account.json
+          python -m json.tool google-service-account.json >/dev/null
+      - name: Run meeting AI batch
+        run: |
+          hour="$(date +%H)"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$hour" != "07" ]; then
+            echo "Skipping duplicate UTC schedule outside Budapest 07:00. Local hour=$hour"
+            exit 0
+          fi
+          python run_fireflies_meeting_ai.py \
+            --lookback-hours "${{ inputs.lookback_hours || '24' }}"
+      - name: Upload meeting AI logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meeting-ai-run
+          if-no-files-found: ignore
+          path: meeting_ai_run.log

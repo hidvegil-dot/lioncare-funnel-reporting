@@ -330,6 +330,93 @@ GitHub Actions példa is van itt:
 .github/workflows/daily_funnel_report.yml
 ```
 
+## LionCare Meeting AI
+
+A Meeting AI háromrétegű ügyfélkommunikációs rendszer:
+
+1. Google Drive = memória
+2. OpenAI API = automata feldolgozás
+3. ChatGPT asszisztens = későbbi stratégiai gondolkodás és manuális elemzés
+
+Az első verzió egyetlen tanácsadó meetingjeire fókuszál. Nem ír automatikusan GHL-be, nem küld e-mailt, és nem hoz létre taskot. A Fireflies átiratokból automatikusan elkészíti:
+
+- GHL-be másolható CRM note
+- ügyfélre szabott follow-up e-mail vázlat
+- következő lépés javaslat
+- zárási esély és hot/red flag értékelés
+- belső kommunikációs diagnózis
+- rövid vezetői összefoglaló
+
+Adatáramlás:
+
+```text
+Fireflies transcript
+-> GitHub Actions / Python batch
+-> OpenAI API ügyfélkommunikációs prompt
+-> Google Drive markdown memória
+-> Google Sheet meeting_ai_log index
+-> később ChatGPT asszisztens Drive-ból visszakeres
+```
+
+GitHub Actions workflow:
+
+- `.github/workflows/fireflies_client_communication_ai.yml`
+- napi futás: 07:00 Europe/Budapest
+- manuális futtatás: GitHub Actions / Fireflies Client Communication AI / Run workflow
+
+Szükséges GitHub Secrets:
+
+- `FIREFLIES_API_KEY`
+- `OPENAI_API_KEY`
+- `GOOGLE_SHEET_ID`
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` vagy meglévő `GOOGLE_SERVICE_ACCOUNT_JSON`
+- opcionális: `OPENAI_MODEL`
+- opcionális: `GOOGLE_DRIVE_ROOT_FOLDER_NAME`, alapértelmezés: `LionCare`
+
+Előkészített, de az első verzióban nem író GHL kapcsolók:
+
+- `GHL_WRITE_NOTES_ENABLED=false`
+- `GHL_CREATE_TASKS_ENABLED=false`
+- `EMAIL_DRAFT_ENABLED=false`
+- `RAW_TRANSCRIPT_SAVE_ENABLED=true`
+
+Google Drive memória struktúra:
+
+```text
+LionCare/
+└── meeting_ai/
+    ├── raw_transcripts/
+    ├── crm_notes/
+    ├── followup_drafts/
+    ├── communication_diagnosis/
+    ├── executive_summaries/
+    └── weekly_patterns/
+```
+
+Fájlnév logika:
+
+```text
+YYYY-MM-DD_client-name_fireflies-id_crm-note.md
+YYYY-MM-DD_client-name_fireflies-id_followup.md
+YYYY-MM-DD_client-name_fireflies-id_diagnosis.md
+YYYY-MM-DD_client-name_fireflies-id_summary.md
+YYYY-MM-DD_client-name_fireflies-id_transcript.md
+```
+
+Google Sheet index tab:
+
+- `meeting_ai_log`
+
+A Sheet csak indexet tárol: meeting metaadat, fontos KPI-k, Drive linkek, státusz, hibaüzenet. A teljes transcript és AI elemzés nem kerül Sheetbe.
+
+Kézi teszt lokálisan:
+
+```bash
+python run_fireflies_meeting_ai.py --lookback-hours 24 --limit 5
+```
+
+Hosszú transcript esetén a rendszer először strukturált kivonatot készít, és abból generálja az outputokat, hogy ne küldje ugyanazt a teljes átiratot több külön OpenAI hívásban.
+
 Fontos: a GitHub Actions cron UTC-ben fut. A mellékelt workflow `03:59` és `04:59` UTC-kor is elindul, hogy téli és nyári időszámításban is lefedje a Budapest-idő szerinti 05:59-et. A guard step a budapesti 05:00-06:59 ablakban engedi futni a riportot, mert a GitHub scheduled runok késhetnek. A napi mentés idempotens: ugyanarra a riportdátumra a Google Sheet sort cseréli, a Drive/OneDrive fájlokat pedig ugyanarra a névre írja.
 
 ## Logging

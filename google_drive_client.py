@@ -120,7 +120,7 @@ class GoogleDriveClient:
                     "mimeType": FOLDER_MIME_TYPE,
                     "parents": [parent_id],
                 },
-                fields="id,name",
+                fields="id,name,webViewLink",
             )
             .execute()
         )
@@ -140,7 +140,7 @@ class GoogleDriveClient:
                     fileId=existing["id"],
                     body=body,
                     media_body=media,
-                    fields="id,name",
+                    fields="id,name,webViewLink",
                 )
                 .execute()
             )
@@ -149,10 +149,14 @@ class GoogleDriveClient:
             body["parents"] = [folder_id]
             uploaded = (
                 self.service.files()
-                .create(body=body, media_body=media, fields="id,name")
+                .create(body=body, media_body=media, fields="id,name,webViewLink")
                 .execute()
             )
         return str(uploaded["id"])
+
+    def get_file_link(self, file_id: str) -> str:
+        file = self.service.files().get(fileId=file_id, fields="id,webViewLink").execute()
+        return str(file.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view")
 
     def _find_folder(self, *, name: str, parent_id: str) -> dict[str, Any] | None:
         escaped_name = _escape_query_value(name)
