@@ -44,10 +44,13 @@ class GHLConfig:
 
     @classmethod
     def from_env(cls) -> "GHLConfig":
-        api_key = os.getenv("GHL_API_KEY", "").strip()
+        api_key = (
+            os.getenv("GHL_PRIVATE_INTEGRATION_TOKEN", "").strip()
+            or os.getenv("GHL_API_KEY", "").strip()
+        )
         location_id = os.getenv("GHL_LOCATION_ID", "").strip()
         if not api_key:
-            raise ValueError("Missing GHL_API_KEY environment variable")
+            raise ValueError("Missing GHL_API_KEY or GHL_PRIVATE_INTEGRATION_TOKEN environment variable")
         if not location_id:
             raise ValueError("Missing GHL_LOCATION_ID environment variable")
 
@@ -445,6 +448,67 @@ class GHLClient:
         response = self._request("GET", f"/opportunities/{opportunity_id}")
         data = response.json()
         return data.get("opportunity") or data.get("data") or data
+
+    def fetch_opportunities(self) -> list[dict[str, Any]]:
+        variants = [
+            (
+                "GET",
+                "/opportunities/search",
+                {"location_id": self.config.location_id, "limit": self.config.page_limit},
+            ),
+            (
+                "GET",
+                "/opportunities/search",
+                {"locationId": self.config.location_id, "limit": self.config.page_limit},
+            ),
+            (
+                "GET",
+                "/opportunities/",
+                {"location_id": self.config.location_id, "limit": self.config.page_limit},
+            ),
+        ]
+        last_error: GHLAPIError | None = None
+        for method, path, params in variants:
+            try:
+                return self._fetch_paginated_collection(
+                    method=method,
+                    path=path,
+                    params=params,
+                    collection_keys=("opportunities", "data", "results"),
+                )
+            except GHLAPIError as exc:
+                last_error = exc
+                if exc.status_code not in {400, 404, 422}:
+                    raise
+        raise last_error or GHLAPIError("Opportunities search failed without a specific API error")
+
+    def _fetch_paginated_collection(
+        self,
+        *,
+        method: str,
+        path: str,
+        params: dict[str, Any],
+        collection_keys: tuple[str, ...],
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            page_params = {**params, "page": page}
+            response = self._request(method, path, params=page_params)
+            payload = response.json()
+            batch: list[dict[str, Any]] = []
+            for key in collection_keys:
+                value = payload.get(key)
+                if isinstance(value, list):
+                    batch = value
+                    break
+            if not batch:
+                break
+            items.extend(batch)
+            if len(batch) < self.config.page_limit:
+                break
+            page += 1
+        return items
 
     def update_contact_custom_fields(self, contact_id: str, field_values: dict[str, Any]) -> dict[str, Any]:
         field_map = self.get_custom_field_map()

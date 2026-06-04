@@ -92,6 +92,9 @@ python main.py --report-type monthly_compare
 - `weekly_funnel_report.csv`
 - `weekly_funnel_report.html`
 - `weekly_funnel_report.pdf`
+- `weekly_ghl_funnel_report.csv`
+- `weekly_ghl_funnel_report.html`
+- `weekly_ghl_ceo_summary.md`
 - `monthly_funnel_report.csv`
 - `monthly_funnel_report.html`
 - `monthly_funnel_report.pdf`
@@ -99,6 +102,77 @@ python main.py --report-type monthly_compare
 - `period_funnel_report.html`
 - `period_funnel_report.pdf`
 - `report_run.log`
+- `weekly_report_run.log`
+
+## Heti GHL vezetői funnel riport
+
+Az új heti vezetői riport elsődleges forrása közvetlenül a GoHighLevel. Nem a HTML riportból és nem a Google Sheetből fejti vissza az adatokat. A Google Sheet csak historikus mentési cél.
+
+Kézi futtatás az utolsó lezárt hétre:
+
+```bash
+python weekly_ghl_report.py
+```
+
+Kézi futtatás konkrét hétre:
+
+```bash
+python weekly_ghl_report.py --week-start 2026-06-01 --week-end 2026-06-07
+```
+
+A heti riport által használt GHL adatforrások:
+
+- `contacts/search`: leadek, created date / lead date, lead status, assigned user, source és landing URL
+- `contacts/:contactId/appointments`: foglalás, appointment státusz, show / no-show / cancelled / rescheduled
+- `opportunities/search` vagy elérhető opportunity lista endpoint: won / lost státusz és szerződésérték, ha a GHL API jogosultság engedi
+- custom fieldek: `lead_date`, `first_booking_date`, `show_date`, `close_date`, `lead_status`
+
+A heti riport kimenetei:
+
+- `weekly_ghl_funnel_report.html`: vezetői HTML riport
+- `weekly_ghl_ceo_summary.md`: rövid magyar CEO summary
+- `weekly_ghl_funnel_report.csv`: heti GHL funnel KPI sor
+- `archive/weekly_ghl_funnel_report_WEEKSTART_WEEKEND.html`
+- `archive/weekly_ghl_ceo_summary_WEEKSTART_WEEKEND.md`
+- `archive/weekly_ghl_funnel_report_WEEKSTART_WEEKEND.csv`
+
+A Google Sheetben a `weekly_ai_analysis` tabot a kód automatikusan létrehozza vagy frissíti. Oszlopai:
+
+```text
+week_start, week_end, new_leads, bookings, showed, no_show, cancelled,
+won, lost, lead_to_booking_rate, booking_to_show_rate, show_to_close_rate,
+main_bottleneck, main_problem, main_opportunity, recommended_action_1,
+recommended_action_2, recommended_action_3, advisor_laszlo_summary,
+advisor_amelita_summary, crm_data_quality_note, created_at
+```
+
+Szükséges GitHub Actions secret-ek:
+
+- `GHL_API_KEY`
+- `GHL_LOCATION_ID`
+- `GHL_BASE_URL`
+- `GHL_API_VERSION`
+- `GOOGLE_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_SHEET_ID`
+- `GOOGLE_DRIVE_ROOT_FOLDER_NAME`
+- `GOOGLE_DRIVE_OAUTH_TOKEN_JSON`
+- opcionális OneDrive feltöltéshez: `RCLONE_CONFIG_ONEDRIVE`, `ONEDRIVE_UPLOAD_ROOT_PATH`
+
+Tanácsadói névfeloldás opcionálisan a `GHL_USER_LABELS` környezeti változóval történik:
+
+```text
+GHL_USER_LABELS=user_id_1:Hidvégi László,user_id_2:Gulyás Amelita
+```
+
+Ha egy tanácsadónak nincs adata, a riport nulla értékekkel jeleníti meg. Ha az opportunity endpoint nem elérhető, a riport nem talál ki szerződésszámot: a won/lost értékeket nullán hagyja, és adatminőségi megjegyzést ír.
+
+GitHub Actions:
+
+```text
+.github/workflows/weekly_funnel_report.yml
+```
+
+Ez hétfőnként Budapest idő szerint 07:00-kor fut. Mivel a GitHub Actions cron UTC-ben működik, a workflow `05:00` és `06:00` UTC-kor is indulhat, de egy Budapest-idő szerinti guard csak akkor engedi tovább, ha helyileg hétfő 07:00 van. A workflow manuálisan is indítható `week_start` és `week_end` inputtal.
 
 ## Historikus Google Drive és Google Sheets mentés
 
