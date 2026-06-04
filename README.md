@@ -58,25 +58,44 @@ Ha ezek be vannak állítva, a napi HTML riport egy külön GA4 Summary és GA4 
 Ha ezek be vannak állítva, a napi és heti HTML riport Meta Ads összesítő blokkot is tartalmaz.
 Ez jelenleg a spend, impressions, clicks, landing page views és leads számokat húzza be, valamint heti nézetben ad set bontást is mutat.
 
-5. FuttatÃ¡s alapÃ©rtelmezett, elmÃºlt 30 napos idÅszakkal:
+5. Opcionális Fireflies API kapcsolat meeting transcript lekéréshez:
+
+- `FIREFLIES_API_KEY=...`
+- opcionálisan: `FIREFLIES_GRAPHQL_URL=https://api.fireflies.ai/graphql`
+
+Gyors ellenőrzés az utolsó 5 transcript listázására:
+
+```bash
+python fireflies_client.py list --limit 5
+```
+
+Egy konkrét transcript lekérése:
+
+```bash
+python fireflies_client.py get TRANSCRIPT_ID
+```
+
+A Fireflies API GraphQL-alapú, és Bearer API key hitelesítést használ. A kliens csak olvasó lekérdezéseket végez: transcript lista és transcript részletek / summary / mondatok.
+
+6. FuttatÃ¡s alapÃ©rtelmezett, elmÃºlt 30 napos idÅszakkal:
 
 ```bash
 python main.py
 ```
 
-6. FuttatÃ¡s egyedi dÃ¡tumtartomÃ¡nnyal:
+7. FuttatÃ¡s egyedi dÃ¡tumtartomÃ¡nnyal:
 
 ```bash
 python main.py --start-date 2026-03-01 --end-date 2026-03-31
 ```
 
-7. HÃ©tfÅi heti Ã¶sszehasonlÃ­tÃ³ riport az aktuális riporthetet a megelőző 7 nappal összehasonlítva:
+8. HÃ©tfÅi heti Ã¶sszehasonlÃ­tÃ³ riport az aktuális riporthetet a megelőző 7 nappal összehasonlítva:
 
 ```bash
 python main.py --report-type weekly_compare
 ```
 
-8. Havi Ã¶sszehasonlÃ­tÃ³ riport az utolsÃ³ lezÃ¡rt Ã¼zleti hÃ³napra, Ã¶sszevetve az azt megelÅzÅ Ã¼zleti hÃ³nappal.
+9. Havi Ã¶sszehasonlÃ­tÃ³ riport az utolsÃ³ lezÃ¡rt Ã¼zleti hÃ³napra, Ã¶sszevetve az azt megelÅzÅ Ã¼zleti hÃ³nappal.
 Az Ã¼zleti hÃ³nap itt 15-tÅl a kÃ¶vetkezÅ hÃ³nap 14-ig tart.
 
 ```bash
