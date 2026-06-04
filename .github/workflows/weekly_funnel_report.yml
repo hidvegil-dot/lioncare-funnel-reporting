@@ -32,6 +32,7 @@ jobs:
       GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
       GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
       GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      GHL_USER_LABELS: ${{ secrets.GHL_USER_LABELS }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/google-service-account.json
       GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
       GOOGLE_DRIVE_ROOT_FOLDER_NAME: ${{ secrets.GOOGLE_DRIVE_ROOT_FOLDER_NAME }}
