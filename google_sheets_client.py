@@ -108,6 +108,11 @@ class GoogleSheetsClient:
             return
 
         logger.info("Writing Google Sheets header tab=%s", title)
+        self.service.spreadsheets().values().clear(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{title}'!A1:Z1",
+            body={},
+        ).execute()
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
             range=f"'{title}'!A1",
