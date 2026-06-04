@@ -386,22 +386,19 @@ Google Drive memória struktúra:
 ```text
 LionCare/
 └── meeting_ai/
-    ├── raw_transcripts/
-    ├── crm_notes/
-    ├── followup_drafts/
-    ├── communication_diagnosis/
-    ├── executive_summaries/
-    └── weekly_patterns/
+    └── Meet/
+        └── YYYY-MM-DD_client-name_fireflies-id/
+            ├── transcript.md
+            ├── crm-note.md
+            ├── followup.md
+            ├── diagnosis.md
+            └── summary.md
 ```
 
-Fájlnév logika:
+Meeting mappa logika:
 
 ```text
-YYYY-MM-DD_client-name_fireflies-id_crm-note.md
-YYYY-MM-DD_client-name_fireflies-id_followup.md
-YYYY-MM-DD_client-name_fireflies-id_diagnosis.md
-YYYY-MM-DD_client-name_fireflies-id_summary.md
-YYYY-MM-DD_client-name_fireflies-id_transcript.md
+LionCare/meeting_ai/Meet/YYYY-MM-DD_client-name_fireflies-id/
 ```
 
 Google Sheet index tab:
