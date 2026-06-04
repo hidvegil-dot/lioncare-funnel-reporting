@@ -11,7 +11,7 @@ import requests
 from meeting_dates import meeting_date_iso
 
 
-PROMPT_VERSION = "meeting-client-communication-v1"
+PROMPT_VERSION = "meeting-client-communication-v2"
 WORKFLOW_VERSION = "meeting-ai-v1"
 DEFAULT_MODEL = "gpt-4o-mini"
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
@@ -19,14 +19,47 @@ LONG_TRANSCRIPT_CHAR_LIMIT = 28000
 
 
 SYSTEM_PROMPT = """
-Te a LionCare ügyfélkommunikációs AI elemzője vagy. Nem általános meeting summaryt készítesz,
-hanem egyéni pénzügyi tanácsadói ügyféltalálkozó után értékesítést támogató, döntésorientált
-anyagokat. Ne találj ki adatot. Ha valami nem hangzott el, írd: nem derült ki az átiratból.
-Magyarul dolgozz. A follow-up email magázó, professzionális, nem nyomulós legyen, ne használd a
-"köszönöm" szót, ne használd a "pénzügyi rés" kifejezést, ne állíts garantált hozamot, és pontos
-jövőbeni állami nyugdíj-kalkulációt csak akkor írj, ha ténylegesen elhangzott.
-Minden fontos következtetéshez adj confidence értéket: magas, közepes vagy alacsony.
-Az output végén legyen manual_review_flag: SEND_READY, NEEDS_REVIEW vagy HIGH_RISK.
+Te a LionCare Meeting AI ügyfélkommunikációs elemzője vagy.
+
+Feladatod NEM általános meeting summary. Feladatod értékesítést támogató, ügyfélkommunikációs és
+döntéstámogatási anyag készítése egy pénzügyi tanácsadói konzultáció után.
+
+Kötelező alapelvek:
+- Magyarul dolgozz.
+- Ne találj ki adatot. Ha valami nem hangzott el, pontosan ezt írd: "nem derült ki az átiratból".
+- Különítsd el az ügyfél mondanivalóját, a tanácsadó kommunikációját, a döntési triggeret,
+  a kifogást, a bizonytalanságot és a következő lépést.
+- Minden fontos következtetéshez adj confidence szintet: magas, közepes vagy alacsony.
+- A válasz legyen használható CRM-ben, follow-upban és belső sales döntésben.
+- Ne legyen minimalista. A rövid, felszínes válasz hibás output.
+
+Follow-up e-mail szabályok:
+- Magyar nyelvű, magázó, professzionális, nem nyomulós.
+- Kövesse az 5 lépcsős logikát: figyelem, keret, megértés, elfogadás, cselekvés.
+- Ne használd a "köszönöm" szót.
+- Ne használd a "pénzügyi rés" kifejezést.
+- Ne állíts garantált hozamot.
+- Ne írj pontos jövőbeni állami nyugdíj-kalkulációt.
+- Konkrét számot csak akkor írj, ha ténylegesen elhangzott az átiratban.
+- Az aláírás pontosan ez legyen:
+Hidvégi László
+pénzügyi tanácsadó
+LionCare
++36 70 779 7726
+MNB reg szám: 224052400166
+
+Minimális tartalmi mélység:
+- crm_note: legalább 12 sor, strukturált, GHL-be másolható.
+- followup_email: legalább 7 bekezdés vagy blokk, ügyfélre szabott, a konkrét beszélgetésre épít.
+- next_step_recommendation: legalább 7 konkrét pont.
+- communication_diagnosis: legalább 8 konkrét megállapítás, külön "mi működött", "hol volt ellenállás",
+  "mit kell jobban mondani", "zárási esély" logikával.
+- executive_summary: legalább 6 konkrét pont vezetői nyelven.
+
+Manual review flag:
+- SEND_READY: ha az ügyfélnek küldhető anyag alacsony kockázatú.
+- NEEDS_REVIEW: ha emberi átnézés kell.
+- HIGH_RISK: ha megfelelőségi, adatminőségi vagy kommunikációs kockázat van.
 """
 
 
@@ -50,11 +83,11 @@ JSON_SCHEMA_HINT = {
     "next_action_confidence": "magas|közepes|alacsony",
     "recommended_status": "string",
     "priority": "LOW|NORMAL|HIGH PRIORITY",
-    "crm_note": "markdown string",
-    "followup_email": "markdown string",
-    "next_step_recommendation": "markdown string",
-    "communication_diagnosis": "markdown string",
-    "executive_summary": "markdown string",
+    "crm_note": "detailed markdown string with fields: ügyfél neve, meeting dátuma, élethelyzet, fő pénzügyi cél, motiváció, félelem/ellenállás, döntési akadály, pénzügyi kapacitás, havi díjszint, érdeklődési szint, következő lépés, következő meeting, státuszjavaslat, confidence notes",
+    "followup_email": "detailed Hungarian email draft using the 5-step sales logic and exact signature",
+    "next_step_recommendation": "detailed markdown action plan: follow-up email, phone call, second meeting, new calculation, deadline, status, priority, owner action",
+    "communication_diagnosis": "detailed markdown diagnosis: what worked, customer uncertainty, decision resistance, product timing, next step clarity, better wording, closing probability 1-10",
+    "executive_summary": "detailed markdown CEO summary: client, meeting essence, decision state, business opportunity, main risk, next best step",
     "structured_patterns": {
         "main_objection": "string",
         "main_motivation": "string",
@@ -106,7 +139,10 @@ class ClientCommunicationAI:
                     "role": "user",
                     "content": (
                         "Elemezd az alábbi Fireflies meeting átiratot ügyfélkommunikációs és sales "
-                        "döntéstámogatási szempontból. Kizárólag JSON-t adj vissza ezzel a sémával: "
+                        "döntéstámogatási szempontból. Kizárólag JSON-t adj vissza. "
+                        "Minden markdown mező legyen teljes, részletes, konkrétumokra épülő, nem minimalista. "
+                        "A CRM note, follow-up, következő lépés, diagnózis és vezetői összefoglaló önmagában is használható anyag legyen. "
+                        "Séma és tartalmi követelmények: "
                         f"{json.dumps(JSON_SCHEMA_HINT, ensure_ascii=False)}\n\n"
                         f"Meeting metaadatok:\n{json.dumps(transcript_metadata(transcript), ensure_ascii=False)}\n\n"
                         f"Átirat vagy strukturált kivonat:\n{input_text}"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Any
 
 from google_sheets_client import GoogleSheetsClient
@@ -43,6 +44,8 @@ class MeetingAILog:
         self.sheets.ensure_tabs({MEETING_AI_LOG_TAB: MEETING_AI_LOG_COLUMNS})
 
     def processed_ids(self) -> set[str]:
+        if os.getenv("MEETING_AI_FORCE_REPROCESS", "").strip().lower() in {"1", "true", "yes", "on"}:
+            return set()
         values = (
             self.sheets.service.spreadsheets()
             .values()

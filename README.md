@@ -424,6 +424,12 @@ MEETING_AI_MOCK_OPENAI_ENABLED=true python run_fireflies_meeting_ai.py --lookbac
 
 GitHub Actions kézi futtatásnál ugyanennek a kapcsolója: `mock_openai=true`. Ez csak technikai tesztre való; az így készült outputok `NEEDS_REVIEW` jelölést kapnak és nem tekinthetők valódi ügyfélkommunikációs elemzésnek.
 
+Ha egy meetinget javított prompttal újra kell generálni, kézi GitHub Actions futtatásnál állítsd:
+
+```text
+force_reprocess=true
+```
+
 Hosszú transcript esetén a rendszer először strukturált kivonatot készít, és abból generálja az outputokat, hogy ne küldje ugyanazt a teljes átiratot több külön OpenAI hívásban.
 
 Fontos: a GitHub Actions cron UTC-ben fut. A mellékelt workflow `03:59` és `04:59` UTC-kor is elindul, hogy téli és nyári időszámításban is lefedje a Budapest-idő szerinti 05:59-et. A guard step a budapesti 05:00-06:59 ablakban engedi futni a riportot, mert a GitHub scheduled runok késhetnek. A napi mentés idempotens: ugyanarra a riportdátumra a Google Sheet sort cseréli, a Drive/OneDrive fájlokat pedig ugyanarra a névre írja.

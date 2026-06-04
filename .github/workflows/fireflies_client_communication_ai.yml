@@ -19,6 +19,14 @@ on:
         options:
           - "false"
           - "true"
+      force_reprocess:
+        description: "Reprocess meetings even if meeting_ai_log already has a SUCCESS row."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: fireflies-client-communication-ai
@@ -45,6 +53,7 @@ jobs:
       EMAIL_DRAFT_ENABLED: "false"
       RAW_TRANSCRIPT_SAVE_ENABLED: "true"
       MEETING_AI_MOCK_OPENAI_ENABLED: ${{ inputs.mock_openai || 'false' }}
+      MEETING_AI_FORCE_REPROCESS: ${{ inputs.force_reprocess || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
