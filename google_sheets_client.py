@@ -96,6 +96,57 @@ class GoogleSheetsClient:
                 body={"values": next_values},
             ).execute()
 
+    def upsert_row_by_key(
+        self,
+        *,
+        tab_name: str,
+        key_column: str,
+        key_value: str,
+        row_values: list[Any],
+    ) -> None:
+        logger.info("Upserting Google Sheets row tab=%s key_column=%s key=%s", tab_name, key_column, key_value)
+        range_name = f"'{tab_name}'!A:Z"
+        response = (
+            self.service.spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range=range_name)
+            .execute()
+        )
+        values = response.get("values", [])
+        if not values:
+            next_values = [row_values]
+        else:
+            header = values[0]
+            try:
+                key_index = header.index(key_column)
+            except ValueError as exc:
+                raise ValueError(f"Missing key column {key_column!r} in tab {tab_name!r}") from exc
+
+            next_values = [header]
+            replaced = False
+            for existing_row in values[1:]:
+                existing_key = existing_row[key_index] if len(existing_row) > key_index else ""
+                if str(existing_key) == str(key_value):
+                    if not replaced:
+                        next_values.append(row_values)
+                        replaced = True
+                    continue
+                next_values.append(existing_row)
+            if not replaced:
+                next_values.append(row_values)
+
+        self.service.spreadsheets().values().clear(
+            spreadsheetId=self.spreadsheet_id,
+            range=range_name,
+            body={},
+        ).execute()
+        self.service.spreadsheets().values().update(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{tab_name}'!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": next_values},
+        ).execute()
+
     def _ensure_header(self, *, title: str, headers: list[str]) -> None:
         response = (
             self.service.spreadsheets()

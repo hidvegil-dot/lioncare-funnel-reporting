@@ -28,6 +28,11 @@ ADVISOR_LABELS = {
     "unassigned": "Nincs delegálva",
 }
 
+DEFAULT_GHL_USER_LABELS = {
+    "xk8bttZvXTINd3NEnR91": "Hidvégi László",
+    "0yqfaKsgtLWOdTKwf6uo": "Gulyás Amelita",
+}
+
 
 SHOWED_STATUSES = {"showed", "show", "completed", "confirmed-show", "attended", "attended_meeting"}
 NO_SHOW_STATUSES = {"no-show", "noshow", "no_show", "did_not_show"}
@@ -338,12 +343,13 @@ def _opportunity_owner(opportunity: dict[str, Any]) -> str:
 
 
 def _advisor_map_from_env() -> dict[str, str]:
-    mapping: dict[str, str] = {}
+    mapping: dict[str, str] = dict(DEFAULT_GHL_USER_LABELS)
     for pair in os.getenv("GHL_USER_LABELS", "").split(","):
         if ":" not in pair:
             continue
         user_id, label = pair.split(":", 1)
-        mapping[user_id.strip()] = label.strip()
+        if user_id.strip() and label.strip():
+            mapping[user_id.strip()] = label.strip()
     return mapping
 
 

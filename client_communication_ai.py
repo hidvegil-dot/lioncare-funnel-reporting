@@ -156,6 +156,13 @@ class ClientCommunicationAI:
                 input_text=input_text,
                 previous_result=result,
             )
+        quality_issues = _analysis_quality_issues(result)
+        if quality_issues:
+            result["manual_review_flag"] = "NEEDS_REVIEW"
+            existing_red_flag = str(result.get("main_red_flag") or "").strip()
+            quality_note = "AI output quality gate: " + "; ".join(quality_issues)
+            result["main_red_flag"] = f"{existing_red_flag} | {quality_note}" if existing_red_flag else quality_note
+            result["quality_gate_issues"] = quality_issues
         result.setdefault("client_name", "nem derült ki az átiratból")
         result.setdefault("meeting_date", meeting_date_iso(transcript.get("date")) or "nem derült ki az átiratból")
         result["ai_prompt_version"] = PROMPT_VERSION
@@ -361,6 +368,10 @@ def _extract_response_text(payload: dict[str, Any]) -> str:
 
 
 def _analysis_has_required_depth(result: dict[str, Any]) -> bool:
+    return not _analysis_quality_issues(result)
+
+
+def _analysis_quality_issues(result: dict[str, Any]) -> list[str]:
     minimum_words = {
         "crm_note": 180,
         "followup_email": 240,
@@ -368,7 +379,9 @@ def _analysis_has_required_depth(result: dict[str, Any]) -> bool:
         "communication_diagnosis": 300,
         "executive_summary": 160,
     }
+    issues: list[str] = []
     for field, minimum in minimum_words.items():
-        if len(str(result.get(field) or "").split()) < minimum:
-            return False
-    return True
+        word_count = len(str(result.get(field) or "").split())
+        if word_count < minimum:
+            issues.append(f"{field} túl rövid ({word_count}/{minimum} szó)")
+    return issues

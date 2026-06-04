@@ -30,6 +30,8 @@ MEETING_AI_LOG_COLUMNS = [
     "output_folder",
     "status",
     "error_message",
+    "transcript_link",
+    "updated_at",
 ]
 
 
@@ -49,7 +51,7 @@ class MeetingAILog:
         values = (
             self.sheets.service.spreadsheets()
             .values()
-            .get(spreadsheetId=self.sheets.spreadsheet_id, range=f"'{MEETING_AI_LOG_TAB}'!A:T")
+            .get(spreadsheetId=self.sheets.spreadsheet_id, range=f"'{MEETING_AI_LOG_TAB}'!A:Z")
             .execute()
             .get("values", [])
         )
@@ -74,55 +76,72 @@ class MeetingAILog:
         return processed
 
     def append_success(self, *, transcript: dict[str, Any], analysis: dict[str, Any], links: Any) -> None:
-        self.sheets.append_row(
+        row = [
+            analysis.get("processed_at", ""),
+            meeting_date_iso(transcript.get("date") or analysis.get("meeting_date")),
+            transcript.get("id", ""),
+            transcript.get("title", ""),
+            analysis.get("client_name", ""),
+            analysis.get("closing_probability", ""),
+            analysis.get("confidence_level", ""),
+            analysis.get("interest_level", ""),
+            analysis.get("main_goal", ""),
+            analysis.get("main_objection", ""),
+            analysis.get("main_red_flag", ""),
+            analysis.get("main_hot_trigger", ""),
+            analysis.get("next_action", ""),
+            links.crm_note_link,
+            links.followup_draft_link,
+            links.diagnosis_link,
+            links.executive_summary_link,
+            links.output_folder,
+            "SUCCESS",
+            "",
+            links.transcript_link,
+            analysis.get("processed_at", ""),
+        ]
+        self.sheets.upsert_row_by_key(
             tab_name=MEETING_AI_LOG_TAB,
-            values=[
-                analysis.get("processed_at", ""),
-                meeting_date_iso(transcript.get("date") or analysis.get("meeting_date")),
-                transcript.get("id", ""),
-                transcript.get("title", ""),
-                analysis.get("client_name", ""),
-                analysis.get("closing_probability", ""),
-                analysis.get("confidence_level", ""),
-                analysis.get("interest_level", ""),
-                analysis.get("main_goal", ""),
-                analysis.get("main_objection", ""),
-                analysis.get("main_red_flag", ""),
-                analysis.get("main_hot_trigger", ""),
-                analysis.get("next_action", ""),
-                links.crm_note_link,
-                links.followup_draft_link,
-                links.diagnosis_link,
-                links.executive_summary_link,
-                links.output_folder,
-                "SUCCESS",
-                "",
-            ],
+            key_column="fireflies_meeting_id",
+            key_value=str(transcript.get("id", "")),
+            row_values=row,
         )
 
     def append_error(self, *, transcript: dict[str, Any], error_message: str, processed_at: str) -> None:
+        row = [
+            processed_at,
+            meeting_date_iso(transcript.get("date")),
+            transcript.get("id", ""),
+            transcript.get("title", ""),
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "ERROR",
+            error_message[:500],
+            "",
+            processed_at,
+        ]
+        meeting_id = str(transcript.get("id") or "").strip()
+        if meeting_id:
+            self.sheets.upsert_row_by_key(
+                tab_name=MEETING_AI_LOG_TAB,
+                key_column="fireflies_meeting_id",
+                key_value=meeting_id,
+                row_values=row,
+            )
+            return
         self.sheets.append_row(
             tab_name=MEETING_AI_LOG_TAB,
-            values=[
-                processed_at,
-                meeting_date_iso(transcript.get("date")),
-                transcript.get("id", ""),
-                transcript.get("title", ""),
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "ERROR",
-                error_message[:500],
-            ],
+            values=row,
         )
