@@ -13,7 +13,7 @@ from meeting_dates import meeting_date_iso
 
 PROMPT_VERSION = "meeting-client-communication-v2"
 WORKFLOW_VERSION = "meeting-ai-v1"
-DEFAULT_MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-4o"
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
 LONG_TRANSCRIPT_CHAR_LIMIT = 28000
 
@@ -150,6 +150,12 @@ class ClientCommunicationAI:
                 },
             ]
         )
+        if not _analysis_has_required_depth(result):
+            result = self._expand_minimal_analysis(
+                transcript=transcript,
+                input_text=input_text,
+                previous_result=result,
+            )
         result.setdefault("client_name", "nem derült ki az átiratból")
         result.setdefault("meeting_date", meeting_date_iso(transcript.get("date")) or "nem derült ki az átiratból")
         result["ai_prompt_version"] = PROMPT_VERSION
@@ -157,6 +163,34 @@ class ClientCommunicationAI:
         result["model"] = self.config.model
         result["processed_at"] = datetime.now().isoformat(timespec="seconds")
         return result
+
+    def _expand_minimal_analysis(
+        self,
+        *,
+        transcript: dict[str, Any],
+        input_text: str,
+        previous_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._request_json(
+            [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        "Az előző válasz túl minimalista volt, ezért generáld újra teljes mélységben. "
+                        "Ne rövidíts. Ne csak összefoglalj. Készíts sales használatra alkalmas anyagot. "
+                        "Elvárt minimumok: CRM note legalább 250 szó; follow-up legalább 350 szó; "
+                        "kommunikációs diagnózis legalább 500 szó; vezetői összefoglaló legalább 250 szó; "
+                        "következő lépés javaslat legalább 150 szó. "
+                        "Kizárólag JSON-t adj vissza ugyanazzal a sémával. "
+                        f"Séma: {json.dumps(JSON_SCHEMA_HINT, ensure_ascii=False)}\n\n"
+                        f"Előző, túl rövid válasz:\n{json.dumps(previous_result, ensure_ascii=False)}\n\n"
+                        f"Meeting metaadatok:\n{json.dumps(transcript_metadata(transcript), ensure_ascii=False)}\n\n"
+                        f"Átirat vagy strukturált kivonat:\n{input_text}"
+                    ),
+                },
+            ]
+        )
 
     def _build_structured_digest(self, transcript: dict[str, Any], transcript_text: str) -> str:
         digest = self._request_text(
@@ -191,6 +225,7 @@ class ClientCommunicationAI:
             "model": self.config.model,
             "messages": input_messages,
             "temperature": 0.2,
+            "max_tokens": 8000,
         }
         if response_format:
             body["response_format"] = response_format
@@ -323,3 +358,17 @@ def _extract_response_text(payload: dict[str, Any]) -> str:
         return ""
     message = choices[0].get("message") or {}
     return str(message.get("content") or "").strip()
+
+
+def _analysis_has_required_depth(result: dict[str, Any]) -> bool:
+    minimum_words = {
+        "crm_note": 180,
+        "followup_email": 240,
+        "next_step_recommendation": 120,
+        "communication_diagnosis": 300,
+        "executive_summary": 160,
+    }
+    for field, minimum in minimum_words.items():
+        if len(str(result.get(field) or "").split()) < minimum:
+            return False
+    return True
