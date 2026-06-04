@@ -239,23 +239,27 @@ python run_daily_funnel_report.py
 
 Sikeres smoke test után a Drive-ban ezeknek kell megjelenniük:
 
-- `LionCare/riport/daily_html/lioncare_drive_upload_smoke_test_*.html`
-- `LionCare/riport/daily_csv/lioncare_drive_upload_smoke_test_*.csv`
+- `LionCare/riport/daily/YYYY/MM/YYYY-MM-DD/_smoke_test/lioncare_drive_upload_smoke_test_*.html`
+- `LionCare/riport/daily/YYYY/MM/YYYY-MM-DD/_smoke_test/lioncare_drive_upload_smoke_test_*.csv`
 
 A rendszer nem használ hardcoded Drive folder ID-t. Futáskor ellenőrzi és szükség esetén létrehozza ezt a struktúrát:
 
 ```text
 LionCare/
 └── riport/
-    ├── daily_html/
-    ├── daily_csv/
+    ├── daily/
+    │   └── YYYY/
+    │       └── MM/
+    │           └── YYYY-MM-DD/
+    │               ├── daily_funnel_report.html
+    │               └── daily_funnel_report.csv
     └── archive/
 ```
 
-A Drive-ba dátumozott fájlok kerülnek:
+A Drive-ba a napi HTML és CSV egy közös dátum szerinti mappába kerül:
 
-- `LionCare/riport/daily_html/daily_funnel_report_YYYY-MM-DD.html`
-- `LionCare/riport/daily_csv/daily_funnel_report_YYYY-MM-DD.csv`
+- `LionCare/riport/daily/YYYY/MM/YYYY-MM-DD/daily_funnel_report.html`
+- `LionCare/riport/daily/YYYY/MM/YYYY-MM-DD/daily_funnel_report.csv`
 
 A Google Sheet neve javasoltan `LionCare Funnel Historical Data`, a tabokat a kód automatikusan létrehozza és fejlécezi:
 

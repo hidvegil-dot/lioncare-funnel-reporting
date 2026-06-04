@@ -149,17 +149,19 @@ def persist_daily_report_history(
                 f"{config.drive_upload_auth_mode}. Use `oauth` or `service_account`."
             )
         root_folder_id = drive.resolve_root_folder_id(config.drive_root_folder_name)
-        html_folder_id = drive.ensure_folder_path(
-            ["riport", "daily_html"],
-            root_folder_id=root_folder_id,
-        )
-        csv_folder_id = drive.ensure_folder_path(
-            ["riport", "daily_csv"],
+        daily_folder_id = drive.ensure_folder_path(
+            [
+                "riport",
+                "daily",
+                f"{report_date.year:04d}",
+                f"{report_date.month:02d}",
+                report_date.isoformat(),
+            ],
             root_folder_id=root_folder_id,
         )
         drive.ensure_folder_path(["riport", "archive"], root_folder_id=root_folder_id)
-        drive.upload_file(dated_html_path, folder_id=html_folder_id, filename=dated_html_path.name)
-        drive.upload_file(dated_csv_path, folder_id=csv_folder_id, filename=dated_csv_path.name)
+        drive.upload_file(dated_html_path, folder_id=daily_folder_id, filename="daily_funnel_report.html")
+        drive.upload_file(dated_csv_path, folder_id=daily_folder_id, filename="daily_funnel_report.csv")
         logger.info("Completed Google Drive daily report upload date=%s", report_date)
     except _DriveUploadSkipped:
         pass

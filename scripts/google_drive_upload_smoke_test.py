@@ -38,28 +38,26 @@ def main() -> None:
             raise SystemExit("Missing GOOGLE_APPLICATION_CREDENTIALS")
         drive = GoogleDriveClient(service_account_path)
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    stamp = now.strftime("%Y%m%d_%H%M%S")
     html_path = Path("/private/tmp") / f"lioncare_drive_upload_smoke_test_{stamp}.html"
     csv_path = Path("/private/tmp") / f"lioncare_drive_upload_smoke_test_{stamp}.csv"
     html_path.write_text("<html><body>LionCare Drive OAuth smoke test</body></html>\n")
     csv_path.write_text("status,message\nok,LionCare Drive OAuth smoke test\n")
 
     root_folder_id = drive.resolve_root_folder_id(root_folder_name)
-    html_folder_id = drive.ensure_folder_path(
-        ["riport", "daily_html"],
-        root_folder_id=root_folder_id,
-    )
-    csv_folder_id = drive.ensure_folder_path(
-        ["riport", "daily_csv"],
+    daily_folder_id = drive.ensure_folder_path(
+        ["riport", "daily", f"{now.year:04d}", f"{now.month:02d}", now.date().isoformat(), "_smoke_test"],
         root_folder_id=root_folder_id,
     )
     drive.ensure_folder_path(["riport", "archive"], root_folder_id=root_folder_id)
 
-    html_file_id = drive.upload_file(html_path, folder_id=html_folder_id, filename=html_path.name)
-    csv_file_id = drive.upload_file(csv_path, folder_id=csv_folder_id, filename=csv_path.name)
+    html_file_id = drive.upload_file(html_path, folder_id=daily_folder_id, filename=html_path.name)
+    csv_file_id = drive.upload_file(csv_path, folder_id=daily_folder_id, filename=csv_path.name)
 
     print("drive_upload_smoke_test=success")
     print(f"root_folder={root_folder_name}")
+    print(f"daily_folder=riport/daily/{now.year:04d}/{now.month:02d}/{now.date().isoformat()}/_smoke_test")
     print(f"html_file_id={html_file_id}")
     print(f"csv_file_id={csv_file_id}")
 
