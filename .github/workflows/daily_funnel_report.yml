@@ -46,6 +46,8 @@ jobs:
       ONEDRIVE_UPLOAD_ROOT_PATH: ${{ secrets.ONEDRIVE_UPLOAD_ROOT_PATH }}
       REPORT_HISTORY_ENABLED: "true"
       REPORT_DRIVE_UPLOAD_ENABLED: "true"
+      REPORT_STORAGE_STRICT: "true"
+      REPORT_DATA_STRICT: "true"
     steps:
       - name: Budapest 06:00 guard
         id: budapest_time
@@ -85,6 +87,9 @@ jobs:
             if [ -z "${!name:-}" ]; then
               echo "::error title=Missing GitHub secret::$name is empty or not configured"
               missing=1
+            elif [ "${!name}" = "$name" ]; then
+              echo "::error title=Invalid GitHub secret::$name contains the literal placeholder value"
+              missing=1
             fi
           done
           exit "$missing"
@@ -96,6 +101,10 @@ jobs:
           printf '%s' "$GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_JSON" > google-drive-oauth-client-secret.json
           printf '%s' "$GOOGLE_DRIVE_OAUTH_TOKEN_JSON" > google-drive-oauth-token.json
           chmod 600 google-service-account.json ga4-service-account.json google-drive-oauth-client-secret.json google-drive-oauth-token.json
+          python -m json.tool google-service-account.json >/dev/null
+          python -m json.tool ga4-service-account.json >/dev/null
+          python -m json.tool google-drive-oauth-client-secret.json >/dev/null
+          python -m json.tool google-drive-oauth-token.json >/dev/null
       - name: Run daily report
         if: steps.budapest_time.outputs.run_report == 'true'
         run: |

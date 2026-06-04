@@ -14,6 +14,10 @@ from parser import SHEET_TABS, build_historical_rows
 logger = logging.getLogger(__name__)
 
 
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class ReportStorageConfig:
     credentials_path: str
@@ -63,12 +67,18 @@ def persist_daily_report_history(
     meta_data: dict[str, Any] | None,
 ) -> None:
     config = ReportStorageConfig.from_env_optional()
+    strict_storage = _env_flag("REPORT_STORAGE_STRICT")
     if config is None:
-        logger.info(
-            "Skipping historical report storage because REPORT_HISTORY_ENABLED is disabled or Google env vars are missing"
+        message = (
+            "Skipping historical report storage because REPORT_HISTORY_ENABLED is disabled "
+            "or Google env vars are missing"
         )
+        if strict_storage:
+            raise RuntimeError(message)
+        logger.info(message)
         return
 
+    storage_failures: list[str] = []
     dated_html_path = _copy_dated_report(
         source_path=html_path,
         output_dir=output_dir,
@@ -127,8 +137,10 @@ def persist_daily_report_history(
         logger.info("Completed Google Drive daily report upload date=%s", report_date)
     except _DriveUploadSkipped:
         pass
-    except Exception:
+    except Exception as exc:
         logger.exception("Google Drive upload failed; local report files remain available")
+        if strict_storage:
+            storage_failures.append(f"Google Drive upload failed: {exc}")
 
     try:
         from google_sheets_client import GoogleSheetsClient
@@ -151,8 +163,13 @@ def persist_daily_report_history(
                 rows=rows,
             )
         logger.info("Completed Google Sheets historical upsert date=%s", report_date)
-    except Exception:
+    except Exception as exc:
         logger.exception("Google Sheets append failed; local report files remain available")
+        if strict_storage:
+            storage_failures.append(f"Google Sheets upsert failed: {exc}")
+
+    if storage_failures:
+        raise RuntimeError("; ".join(storage_failures))
 
 
 def _copy_dated_report(*, source_path: Path, output_dir: Path, filename: str) -> Path:

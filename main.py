@@ -36,6 +36,10 @@ from report_builder import (
 logger = logging.getLogger(__name__)
 
 
+def env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def parse_args() -> argparse.Namespace:
     today = date.today()
     default_end = previous_business_day(today)
@@ -149,6 +153,7 @@ def load_report_user_ids() -> list[str]:
 def main() -> None:
     load_dotenv()
     args = parse_args()
+    strict_data = env_flag("REPORT_DATA_STRICT")
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -262,6 +267,8 @@ def main() -> None:
                     "Skipping GA4 data after %.2fs because the GA4 query failed",
                     time.perf_counter() - ga4_started_at,
                 )
+                if strict_data:
+                    raise
         meta_config = MetaAdsConfig.from_env_optional()
         if meta_config is not None and args.report_type in {"daily", "weekly_compare", "monthly_compare"}:
             meta_started_at = time.perf_counter()
@@ -277,6 +284,8 @@ def main() -> None:
                     "Skipping Meta Ads data after %.2fs because the Meta query failed",
                     time.perf_counter() - meta_started_at,
                 )
+                if strict_data:
+                    raise
         decision_report = None
         if args.report_type == "daily":
             decision_report = build_daily_decision_report(
