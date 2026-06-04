@@ -28,15 +28,9 @@ jobs:
       GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
       GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
       GHL_USER_LABELS: ${{ secrets.GHL_USER_LABELS }}
-      GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
-      GA4_CREDENTIALS_PATH: ${{ github.workspace }}/ga4-service-account.json
-      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
-      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
-      META_CAMPAIGN_ID: ${{ secrets.META_CAMPAIGN_ID }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/google-service-account.json
       GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
       GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-      GA4_SERVICE_ACCOUNT_JSON: ${{ secrets.GA4_SERVICE_ACCOUNT_JSON }}
       REPORT_HISTORY_ENABLED: "true"
       REPORT_DRIVE_UPLOAD_ENABLED: "false"
       REPORT_STORAGE_STRICT: "true"
@@ -54,11 +48,6 @@ jobs:
             GHL_API_KEY \
             GHL_LOCATION_ID \
             GHL_BASE_URL \
-            GA4_PROPERTY_ID \
-            GA4_SERVICE_ACCOUNT_JSON \
-            META_AD_ACCOUNT_ID \
-            META_ACCESS_TOKEN \
-            META_CAMPAIGN_ID \
             GOOGLE_SERVICE_ACCOUNT_JSON \
             GOOGLE_SHEET_ID
           do
@@ -74,42 +63,13 @@ jobs:
       - name: Write Google credentials
         run: |
           printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > google-service-account.json
-          printf '%s' "$GA4_SERVICE_ACCOUNT_JSON" > ga4-service-account.json
-          chmod 600 google-service-account.json ga4-service-account.json
+          chmod 600 google-service-account.json
           python -m json.tool google-service-account.json >/dev/null
-          python -m json.tool ga4-service-account.json >/dev/null
       - name: Backfill daily GHL Sheet rows
         run: |
-          python - <<'PY'
-          import os
-          import subprocess
-          from datetime import datetime, timedelta
-
-          start = datetime.strptime(os.environ["START_DATE"], "%Y-%m-%d").date()
-          end = datetime.strptime(os.environ["END_DATE"], "%Y-%m-%d").date()
-          if end < start:
-              raise SystemExit("END_DATE must be later than or equal to START_DATE")
-
-          current = start
-          while current <= end:
-              day = current.isoformat()
-              print(f"::group::Backfill {day}", flush=True)
-              subprocess.run(
-                  [
-                      "python",
-                      "main.py",
-                      "--report-type",
-                      "daily",
-                      "--start-date",
-                      day,
-                      "--end-date",
-                      day,
-                  ],
-                  check=True,
-              )
-              print("::endgroup::", flush=True)
-              current += timedelta(days=1)
-          PY
+          python scripts/backfill_daily_ghl_sheet.py \
+            --start-date "$START_DATE" \
+            --end-date "$END_DATE"
       - name: Upload backfill logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -117,6 +77,4 @@ jobs:
           name: backfill-daily-ghl-sheet
           if-no-files-found: ignore
           path: |
-            report_run.log
-            archive/*.html
-            archive/*.csv
+            backfill_daily_ghl_sheet.log
