@@ -274,6 +274,18 @@ Az `daily_ghl_*` tabok célja, hogy a napi HTML riport GHL-alapú részei tábl�
 - `daily_ghl_owner`: teljes aktuális CRM állomány tanácsadó/delegált szerinti bontásban
 - `daily_ghl_landing`: napi GHL leadek landing URL / forrás szerinti bontásban
 
+A napi funnel riport nem számolja bele a külön eventként futó webinár hirdetés leadjeit. Alapértelmezett kizárás:
+
+- minta: `webinar`, `webinár`
+- dátumhatár: `2026-05-16`
+
+Finomhangolható környezeti változókkal:
+
+```bash
+REPORT_EXCLUDED_LEAD_PATTERNS=webinar,webinár
+REPORT_EXCLUDED_LEAD_END_DATE=2026-05-16
+```
+
 Kézi napi futtatás historikus mentéssel:
 
 ```bash

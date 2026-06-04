@@ -7,6 +7,8 @@ from typing import Any
 
 import requests
 
+from funnel_filters import filter_meta_rows
+
 
 META_API_VERSION = "v22.0"
 
@@ -43,9 +45,15 @@ class MetaAdsClient:
         self.session = requests.Session()
 
     def fetch_summary_and_breakdowns(self, start_date: date, end_date: date) -> dict[str, Any]:
-        campaign_rows = self._fetch_insights(level="campaign", start_date=start_date, end_date=end_date)
-        adset_rows = self._fetch_insights(level="adset", start_date=start_date, end_date=end_date)
-        ad_rows = self._fetch_insights(level="ad", start_date=start_date, end_date=end_date)
+        campaign_rows = filter_meta_rows(
+            self._fetch_insights(level="campaign", start_date=start_date, end_date=end_date)
+        )
+        adset_rows = filter_meta_rows(
+            self._fetch_insights(level="adset", start_date=start_date, end_date=end_date)
+        )
+        ad_rows = filter_meta_rows(
+            self._fetch_insights(level="ad", start_date=start_date, end_date=end_date)
+        )
 
         summary = _summarize_meta_rows(campaign_rows)
 

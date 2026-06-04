@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from funnel_filters import filter_funnel_contacts
+
 
 EXPECTED_CUSTOM_FIELDS = [
     "lead_date",
@@ -111,7 +113,7 @@ class GHLClient:
             if self._contact_matches_window(normalized, start_date, end_date):
                 contacts.append(normalized)
 
-        return contacts
+        return filter_funnel_contacts(contacts)
 
     def fetch_all_contacts(self) -> list[dict[str, Any]]:
         field_map = self.get_custom_field_map()
@@ -123,7 +125,7 @@ class GHLClient:
                 continue
             contacts.append(normalized)
 
-        return contacts
+        return filter_funnel_contacts(contacts)
 
     def fetch_closed_contact_meeting_counts(
         self,
