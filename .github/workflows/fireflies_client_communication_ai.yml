@@ -37,6 +37,9 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
       GOOGLE_DRIVE_ROOT_FOLDER_NAME: ${{ secrets.GOOGLE_DRIVE_ROOT_FOLDER_NAME }}
+      DRIVE_UPLOAD_AUTH_MODE: oauth
+      GOOGLE_DRIVE_OAUTH_TOKEN_PATH: ${{ github.workspace }}/google-drive-oauth-token.json
+      GOOGLE_DRIVE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_DRIVE_OAUTH_TOKEN_JSON }}
       GHL_WRITE_NOTES_ENABLED: "false"
       GHL_CREATE_TASKS_ENABLED: "false"
       EMAIL_DRAFT_ENABLED: "false"
@@ -61,6 +64,10 @@ jobs:
             echo "::error title=Missing GitHub secret::GOOGLE_APPLICATION_CREDENTIALS_JSON or GOOGLE_SERVICE_ACCOUNT_JSON is required"
             missing=1
           fi
+          if [ -z "${GOOGLE_DRIVE_OAUTH_TOKEN_JSON:-}" ]; then
+            echo "::error title=Missing GitHub secret::GOOGLE_DRIVE_OAUTH_TOKEN_JSON is required for Drive memory uploads"
+            missing=1
+          fi
           exit "$missing"
       - name: Write Google credentials
         run: |
@@ -69,8 +76,10 @@ jobs:
           else
             printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > google-service-account.json
           fi
-          chmod 600 google-service-account.json
+          printf '%s' "$GOOGLE_DRIVE_OAUTH_TOKEN_JSON" > google-drive-oauth-token.json
+          chmod 600 google-service-account.json google-drive-oauth-token.json
           python -m json.tool google-service-account.json >/dev/null
+          python -m json.tool google-drive-oauth-token.json >/dev/null
       - name: Run meeting AI batch
         run: |
           hour="$(date +%H)"

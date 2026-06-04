@@ -370,6 +370,7 @@ Szükséges GitHub Secrets:
 - `OPENAI_API_KEY`
 - `GOOGLE_SHEET_ID`
 - `GOOGLE_APPLICATION_CREDENTIALS_JSON` vagy meglévő `GOOGLE_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_DRIVE_OAUTH_TOKEN_JSON`
 - opcionális: `OPENAI_MODEL`
 - opcionális: `GOOGLE_DRIVE_ROOT_FOLDER_NAME`, alapértelmezés: `LionCare`
 

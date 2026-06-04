@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -32,10 +33,7 @@ class MeetingAIProcessor:
         self.ai = ClientCommunicationAI(OpenAIConfig.from_env())
         self.sheets = GoogleSheetsClient(config.google_credentials_path, config.google_sheet_id)
         self.log = MeetingAILog(self.sheets)
-        self.writer = MeetingOutputWriter(
-            GoogleDriveClient(config.google_credentials_path),
-            root_folder_name=config.google_drive_root_folder_name,
-        )
+        self.writer = MeetingOutputWriter(self._build_drive_client(), root_folder_name=config.google_drive_root_folder_name)
 
     def run(self) -> dict[str, int]:
         processed_ids = self.log.processed_ids()
@@ -81,3 +79,12 @@ class MeetingAIProcessor:
             to_date=now.isoformat().replace("+00:00", "Z"),
             mine=True,
         )
+
+    def _build_drive_client(self) -> GoogleDriveClient:
+        auth_mode = os.getenv("DRIVE_UPLOAD_AUTH_MODE", "service_account").strip().lower()
+        if auth_mode == "oauth":
+            token_path = os.getenv("GOOGLE_DRIVE_OAUTH_TOKEN_PATH", "").strip()
+            if not token_path:
+                raise ValueError("GOOGLE_DRIVE_OAUTH_TOKEN_PATH is required when DRIVE_UPLOAD_AUTH_MODE=oauth")
+            return GoogleDriveClient.from_oauth_token(token_path)
+        return GoogleDriveClient(self.config.google_credentials_path)
