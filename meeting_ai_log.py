@@ -56,6 +56,7 @@ class MeetingAILog:
         try:
             id_index = header.index("fireflies_meeting_id")
             status_index = header.index("status")
+            red_flag_index = header.index("main_red_flag")
         except ValueError:
             return set()
         processed: set[str] = set()
@@ -63,7 +64,9 @@ class MeetingAILog:
             if len(row) <= id_index:
                 continue
             status = row[status_index] if len(row) > status_index else ""
-            if str(status).strip().upper() == "SUCCESS":
+            red_flag = row[red_flag_index] if len(row) > red_flag_index else ""
+            is_mock = "mock" in str(red_flag).lower()
+            if str(status).strip().upper() == "SUCCESS" and not is_mock:
                 processed.add(str(row[id_index]))
         return processed
 
