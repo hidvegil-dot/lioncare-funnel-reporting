@@ -260,8 +260,21 @@ A Drive-ba dátumozott fájlok kerülnek:
 A Google Sheet neve javasoltan `LionCare Funnel Historical Data`, a tabokat a kód automatikusan létrehozza és fejlécezi:
 
 - `daily_summary`
-- `adset_daily`
 - `ghl_status_daily`
+- `daily_ghl_summary`
+- `daily_ghl_diagnosis`
+- `daily_ghl_status`
+- `daily_ghl_owner`
+- `daily_ghl_landing`
+- `adset_daily` csak korábbi Meta-alapú historikus tabként marad meg; az új napi riport GHL-alapú elemzése nem ezt használja.
+
+Az új `daily_ghl_*` tabok célja, hogy a napi HTML riport GHL-alapú részei táblázatosan is visszakereshetők legyenek:
+
+- `daily_ghl_summary`: a HTML vezetői GHL összefoglalója, napi funnel KPI-k, aktuális CRM állomány és delegálatlan leadek
+- `daily_ghl_diagnosis`: vezetői szöveges diagnózis és adatminőségi/mérési megjegyzés
+- `daily_ghl_status`: napi új lead státuszok és teljes aktuális CRM státuszállomány
+- `daily_ghl_owner`: teljes aktuális CRM állomány tanácsadó/delegált szerinti bontásban
+- `daily_ghl_landing`: napi GHL leadek landing URL / forrás szerinti bontásban
 
 Kézi napi futtatás historikus mentéssel:
 
