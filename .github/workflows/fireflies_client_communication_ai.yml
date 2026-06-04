@@ -11,6 +11,14 @@ on:
         required: false
         default: "24"
         type: string
+      mock_openai:
+        description: "Use mock AI output to test Fireflies -> Drive -> Sheet without OpenAI API quota."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: fireflies-client-communication-ai
@@ -33,6 +41,7 @@ jobs:
       GHL_CREATE_TASKS_ENABLED: "false"
       EMAIL_DRAFT_ENABLED: "false"
       RAW_TRANSCRIPT_SAVE_ENABLED: "true"
+      MEETING_AI_MOCK_OPENAI_ENABLED: ${{ inputs.mock_openai || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

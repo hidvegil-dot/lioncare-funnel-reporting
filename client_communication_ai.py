@@ -91,6 +91,9 @@ class ClientCommunicationAI:
         )
 
     def analyze_meeting(self, transcript: dict[str, Any]) -> dict[str, Any]:
+        if os.getenv("MEETING_AI_MOCK_OPENAI_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
+            return build_mock_analysis(transcript, model=self.config.model)
+
         transcript_text = build_transcript_text(transcript)
         input_text = transcript_text
         if len(transcript_text) > LONG_TRANSCRIPT_CHAR_LIMIT:
@@ -186,6 +189,96 @@ def transcript_metadata(transcript: dict[str, Any]) -> dict[str, Any]:
         "organizer_email": transcript.get("organizer_email"),
         "summary": transcript.get("summary"),
     }
+
+
+def build_mock_analysis(transcript: dict[str, Any], *, model: str) -> dict[str, Any]:
+    meeting_date = meeting_date_iso(transcript.get("date")) or "nem derült ki az átiratból"
+    title = str(transcript.get("title") or "Fireflies meeting")
+    client_name = _guess_client_name_from_title(title)
+    processed_at = datetime.now().isoformat(timespec="seconds")
+    return {
+        "client_name": client_name,
+        "client_identification_confidence": "alacsony",
+        "meeting_date": meeting_date,
+        "closing_probability": 0,
+        "closing_probability_confidence": "alacsony",
+        "confidence_level": "alacsony",
+        "interest_level": "nem derült ki az átiratból",
+        "interest_level_confidence": "alacsony",
+        "main_goal": "nem derült ki az átiratból",
+        "main_motivation": "nem derült ki az átiratból",
+        "main_objection": "nem derült ki az átiratból",
+        "main_red_flag": "MOCK teszt mód: valódi OpenAI elemzés nem futott.",
+        "main_hot_trigger": "nem derült ki az átiratból",
+        "decision_barrier": "nem derült ki az átiratból",
+        "emotional_tone": "nem derült ki az átiratból",
+        "next_action": "Éles OpenAI API keret aktiválása után újrafuttatni a meeting AI feldolgozást.",
+        "next_action_confidence": "magas",
+        "recommended_status": "NEEDS_REVIEW",
+        "priority": "NORMAL",
+        "crm_note": (
+            f"Ügyfél neve: {client_name}\n"
+            f"Meeting dátuma: {meeting_date}\n"
+            "Élethelyzet: nem derült ki az átiratból\n"
+            "Fő pénzügyi cél: nem derült ki az átiratból\n"
+            "Fő motiváció: nem derült ki az átiratból\n"
+            "Fő félelem / ellenállás: nem derült ki az átiratból\n"
+            "Döntési akadály: nem derült ki az átiratból\n"
+            "Pénzügyi kapacitás: nem derült ki az átiratból\n"
+            "Javasolt havi díjszint: nem derült ki az átiratból\n"
+            "Érdeklődési szint: nem derült ki az átiratból\n"
+            "Következő lépés: éles OpenAI API kerettel újrafuttatni\n"
+            "Státuszjavaslat: NEEDS_REVIEW\n"
+            "\nMegjegyzés: ez technikai MOCK teszt output, nem ügyfélkommunikációs elemzés."
+        ),
+        "followup_email": (
+            "Tárgy: Egyeztetés folytatása\n\n"
+            "Tisztelt Ügyfelünk!\n\n"
+            "A beszélgetés alapján a következő lépés pontosításához az anyag manuális átnézése szükséges.\n"
+            "Ez a vázlat technikai teszt módban készült, ezért ügyfélnek nem küldhető.\n\n"
+            "Hidvégi László\n"
+            "pénzügyi tanácsadó\n"
+            "LionCare\n"
+            "+36 70 779 7726\n"
+            "MNB reg szám: 224052400166"
+        ),
+        "next_step_recommendation": (
+            "- Follow-up e-mail: éles elemzés után\n"
+            "- Telefonhívás: nem derült ki az átiratból\n"
+            "- Második kör időpont: nem derült ki az átiratból\n"
+            "- Új kalkuláció: nem derült ki az átiratból\n"
+            "- Határidő: OpenAI quota rendezése után azonnal\n"
+            "- Prioritás: NORMAL\n"
+            "- Státusz: NEEDS_REVIEW"
+        ),
+        "communication_diagnosis": (
+            "MOCK teszt mód. A Fireflies, Drive és Sheet feldolgozási lánc ellenőrzésére készült. "
+            "Valódi kommunikációs diagnózis csak aktív OpenAI API kerettel készül."
+        ),
+        "executive_summary": (
+            f"Ügyfél: {client_name}\n"
+            f"Meeting: {title}\n"
+            "Állapot: technikai teszt sikeressége ellenőrizhető, üzleti elemzés még nem készült.\n"
+            "Következő legjobb lépés: OpenAI API billing/credit aktiválása és újrafuttatás."
+        ),
+        "structured_patterns": {
+            "main_objection": "nem derült ki az átiratból",
+            "main_motivation": "nem derült ki az átiratból",
+            "decision_barrier": "nem derült ki az átiratból",
+            "closing_trigger": "nem derült ki az átiratból",
+            "emotional_tone": "nem derült ki az átiratból",
+        },
+        "manual_review_flag": "NEEDS_REVIEW",
+        "ai_prompt_version": f"{PROMPT_VERSION}-mock",
+        "workflow_version": WORKFLOW_VERSION,
+        "model": f"{model}-mock",
+        "processed_at": processed_at,
+    }
+
+
+def _guess_client_name_from_title(title: str) -> str:
+    cleaned = title.replace("Konzultáció", "").replace("konzultáció", "").strip(" -")
+    return cleaned or "nem derült ki az átiratból"
 
 
 def _extract_response_text(payload: dict[str, Any]) -> str:
