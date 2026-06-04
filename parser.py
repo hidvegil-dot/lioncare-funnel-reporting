@@ -6,23 +6,18 @@ from typing import Any
 
 DAILY_SUMMARY_COLUMNS = [
     "date",
-    "total_spend",
-    "meta_complete_registration",
-    "ghl_leads",
-    "meta_cpl",
-    "ghl_cpl",
-    "schedule_count",
-    "contact_showed_count",
-    "purchase_count",
-    "purchase_value",
-    "landing_page_views",
-    "ga4_users",
-    "ga4_thank_you_users",
-    "meta_vs_ghl_diff_percent",
-    "meta_vs_ga4_diff_percent",
-    "measurement_status",
-    "main_insight",
-    "recommendation",
+    "new_leads",
+    "booked_leads",
+    "showed_leads",
+    "closed_leads",
+    "lead_to_booking_pct",
+    "booking_to_show_pct",
+    "show_to_close_pct",
+    "avg_meetings_per_closed",
+    "median_meetings_per_closed",
+    "closed_1_meeting",
+    "closed_2_meetings",
+    "closed_3plus_meetings",
     "created_at",
 ]
 
@@ -70,67 +65,27 @@ def build_historical_rows(
 ) -> dict[str, list[list[Any]]]:
     created_at_value = (created_at or datetime.now()).isoformat(timespec="seconds")
     decision_report = decision_report or {}
-    meta = decision_report.get("meta") or {}
-    calculated = decision_report.get("calculated") or {}
-    diagnosis = decision_report.get("diagnosis") or {}
     ghl = decision_report.get("ghl") or {}
-    meta_summary = (meta_data or {}).get("summary") or {}
-    ga4_landing_summary = (ga4_data or {}).get("landing_performance", {}).get("summary", {})
-
-    learning_events = {
-        str(row.get("label", "")).lower(): row
-        for row in meta.get("learning_events", [])
-        if isinstance(row, dict)
-    }
 
     daily_summary = _row_values(
         DAILY_SUMMARY_COLUMNS,
         {
             "date": report_date.isoformat(),
-            "total_spend": meta.get("spend", meta_summary.get("spend", 0)),
-            "meta_complete_registration": meta.get(
-                "registration_leads",
-                meta_summary.get("registration_leads", 0),
-            ),
-            "ghl_leads": ghl.get("total_leads", summary.get("new_leads", 0)),
-            "meta_cpl": calculated.get("meta_cpl", 0),
-            "ghl_cpl": calculated.get("ghl_lead_cost", 0),
-            "schedule_count": _event_count(learning_events, "schedule"),
-            "contact_showed_count": _event_count(learning_events, "contact"),
-            "purchase_count": _event_count(learning_events, "purchase"),
-            "purchase_value": _event_value(learning_events, "purchase"),
-            "landing_page_views": meta.get("landing_page_view", meta_summary.get("landing_page_views", 0)),
-            "ga4_users": ga4_landing_summary.get("users", 0),
-            "ga4_thank_you_users": ga4_landing_summary.get("thank_you_users", 0),
-            "meta_vs_ghl_diff_percent": calculated.get("meta_lead_vs_ghl_lead_delta_pct", 0),
-            "meta_vs_ga4_diff_percent": calculated.get("meta_landing_vs_ga4_page_view_delta_pct", 0),
-            "measurement_status": diagnosis.get("overall_status", ""),
-            "main_insight": diagnosis.get("daily_summary") or diagnosis.get("text", ""),
-            "recommendation": _recommendation_from_decision_report(decision_report),
+            "new_leads": summary.get("new_leads", 0),
+            "booked_leads": summary.get("booked_leads", 0),
+            "showed_leads": summary.get("showed_leads", 0),
+            "closed_leads": summary.get("closed_leads", 0),
+            "lead_to_booking_pct": summary.get("lead_to_booking_pct", 0),
+            "booking_to_show_pct": summary.get("booking_to_show_pct", 0),
+            "show_to_close_pct": summary.get("show_to_close_pct", 0),
+            "avg_meetings_per_closed": summary.get("avg_meetings_per_closed", 0),
+            "median_meetings_per_closed": summary.get("median_meetings_per_closed", 0),
+            "closed_1_meeting": summary.get("closed_1_meeting", 0),
+            "closed_2_meetings": summary.get("closed_2_meetings", 0),
+            "closed_3plus_meetings": summary.get("closed_3plus_meetings", 0),
             "created_at": created_at_value,
         },
     )
-
-    adset_rows = [
-        _row_values(
-            ADSET_DAILY_COLUMNS,
-            {
-                "date": report_date.isoformat(),
-                "campaign_name": adset.get("campaign_name", ""),
-                "adset_name": adset.get("name", ""),
-                "decision": adset.get("decision", ""),
-                "spend": adset.get("spend", 0),
-                "landing_view": adset.get("landing_page_views", 0),
-                "complete_registration": adset.get("registration_leads", adset.get("meta_leads", 0)),
-                "cpl": adset.get("cost_per_meta_conversion", 0),
-                "click_to_landing_percent": adset.get("click_to_landing_pct", 0),
-                "interpretation": adset.get("evaluation", ""),
-                "created_at": created_at_value,
-            },
-        )
-        for adset in meta.get("adsets", [])
-        if isinstance(adset, dict)
-    ]
 
     status_map = {
         str(row.get("status", "")).lower(): int(row.get("count", 0))
@@ -147,11 +102,11 @@ def build_historical_rows(
         GHL_STATUS_DAILY_COLUMNS,
         {
             "date": report_date.isoformat(),
-            "total_ghl_contacts": ghl.get("total_leads", summary.get("new_leads", 0)),
-            "new_count": status_map.get("new", 0),
-            "booked_count": status_map.get("booked", 0),
-            "showed_count": status_map.get("showed", 0),
-            "closed_count": status_map.get("closed", 0),
+            "total_ghl_contacts": summary.get("new_leads", 0),
+            "new_count": summary.get("new_leads", 0),
+            "booked_count": summary.get("booked_leads", 0),
+            "showed_count": summary.get("showed_leads", 0),
+            "closed_count": summary.get("closed_leads", 0),
             "unknown_count": status_map.get("unknown", 0),
             "unassigned_count": unassigned_count,
             "created_at": created_at_value,
@@ -160,29 +115,10 @@ def build_historical_rows(
 
     return {
         "daily_summary": [daily_summary],
-        "adset_daily": adset_rows,
+        "adset_daily": [],
         "ghl_status_daily": [ghl_status_daily],
     }
 
 
 def _row_values(columns: list[str], values: dict[str, Any]) -> list[Any]:
     return [values.get(column, "") for column in columns]
-
-
-def _event_count(events: dict[str, dict[str, Any]], event_name: str) -> int:
-    return int((events.get(event_name) or {}).get("count", 0))
-
-
-def _event_value(events: dict[str, dict[str, Any]], event_name: str) -> float:
-    return float((events.get(event_name) or {}).get("value", 0.0))
-
-
-def _recommendation_from_decision_report(decision_report: dict[str, Any]) -> str:
-    meta = decision_report.get("meta") or {}
-    best = meta.get("best_adset") or {}
-    worst = meta.get("worst_adset") or {}
-    if best and worst and best.get("name") != worst.get("name"):
-        return f"Erősítsd: {best.get('name')}; kontrolláld: {worst.get('name')}."
-    if best:
-        return f"Fő kontrollpont: {best.get('name')}."
-    return ""
