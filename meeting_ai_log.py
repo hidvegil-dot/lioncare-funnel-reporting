@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from google_sheets_client import GoogleSheetsClient
+from meeting_dates import meeting_date_iso
 
 
 MEETING_AI_LOG_TAB = "meeting_ai_log"
@@ -71,7 +72,7 @@ class MeetingAILog:
             tab_name=MEETING_AI_LOG_TAB,
             values=[
                 analysis.get("processed_at", ""),
-                str(transcript.get("date") or analysis.get("meeting_date") or "")[:10],
+                meeting_date_iso(transcript.get("date") or analysis.get("meeting_date")),
                 transcript.get("id", ""),
                 transcript.get("title", ""),
                 analysis.get("client_name", ""),
@@ -98,7 +99,7 @@ class MeetingAILog:
             tab_name=MEETING_AI_LOG_TAB,
             values=[
                 processed_at,
-                str(transcript.get("date") or "")[:10],
+                meeting_date_iso(transcript.get("date")),
                 transcript.get("id", ""),
                 transcript.get("title", ""),
                 "",

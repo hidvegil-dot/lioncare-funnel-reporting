@@ -10,6 +10,7 @@ from typing import Any
 
 from client_communication_ai import build_transcript_text, transcript_metadata
 from google_drive_client import GoogleDriveClient
+from meeting_dates import meeting_date_iso
 
 
 MEETING_AI_FOLDERS = {
@@ -125,10 +126,8 @@ def slugify(value: str) -> str:
 
 
 def _date_prefix(value: Any) -> str:
-    text = str(value or "").strip()
-    if len(text) >= 10:
-        return text[:10]
-    return datetime.now().date().isoformat()
+    parsed = meeting_date_iso(value)
+    return parsed or datetime.now().date().isoformat()
 
 
 def _output_header(analysis: dict[str, Any]) -> str:

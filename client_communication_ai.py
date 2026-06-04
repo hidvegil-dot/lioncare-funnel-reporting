@@ -8,6 +8,8 @@ from typing import Any
 
 import requests
 
+from meeting_dates import meeting_date_iso
+
 
 PROMPT_VERSION = "meeting-client-communication-v1"
 WORKFLOW_VERSION = "meeting-ai-v1"
@@ -110,7 +112,7 @@ class ClientCommunicationAI:
             ]
         )
         result.setdefault("client_name", "nem derült ki az átiratból")
-        result.setdefault("meeting_date", str(transcript.get("date") or "nem derült ki az átiratból"))
+        result.setdefault("meeting_date", meeting_date_iso(transcript.get("date")) or "nem derült ki az átiratból")
         result["ai_prompt_version"] = PROMPT_VERSION
         result["workflow_version"] = WORKFLOW_VERSION
         result["model"] = self.config.model
@@ -178,7 +180,7 @@ def transcript_metadata(transcript: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": transcript.get("id"),
         "title": transcript.get("title"),
-        "date": transcript.get("date"),
+        "date": meeting_date_iso(transcript.get("date")),
         "duration": transcript.get("duration"),
         "participants": transcript.get("participants"),
         "organizer_email": transcript.get("organizer_email"),
