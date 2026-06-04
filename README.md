@@ -275,13 +275,13 @@ Ha csak lokális riport kell Drive/Sheets nélkül:
 REPORT_HISTORY_ENABLED=false python main.py --report-type daily
 ```
 
-Cron példa macOS/Linux környezetre, Budapest idő szerint reggel 06:00-kor:
+Cron példa macOS/Linux környezetre, Budapest idő szerint reggel 05:59-kor:
 
 ```cron
-0 6 * * * cd /path/to/LionCare\ report && /path/to/python /path/to/LionCare\ report/run_daily_funnel_report.py >> /path/to/LionCare\ report/cron.log 2>&1
+59 5 * * * cd /path/to/LionCare\ report && /path/to/python /path/to/LionCare\ report/run_daily_funnel_report.py >> /path/to/LionCare\ report/cron.log 2>&1
 ```
 
-macOS `launchd` példa ugyanarra a 06:00-s napi futásra:
+macOS `launchd` példa ugyanarra a napi futásra:
 
 ```bash
 cp com.lioncare.daily-funnel-report.plist ~/Library/LaunchAgents/
@@ -307,7 +307,7 @@ GitHub Actions példa is van itt:
 .github/workflows/daily_funnel_report.yml
 ```
 
-Fontos: a GitHub Actions cron UTC-ben fut. A mellékelt workflow `04:00` és `05:00` UTC-kor is elindul, de egy Budapest-idő szerinti guard step csak akkor futtatja a riportot, ha helyileg ténylegesen `06:00` van. Így a téli/nyári időszámítás nem okoz dupla vagy rossz időpontú futást.
+Fontos: a GitHub Actions cron UTC-ben fut. A mellékelt workflow `03:59` és `04:59` UTC-kor is elindul, hogy téli és nyári időszámításban is lefedje a Budapest-idő szerinti 05:59-et. A guard step a budapesti 05:00-06:59 ablakban engedi futni a riportot, mert a GitHub scheduled runok késhetnek. A napi mentés idempotens: ugyanarra a riportdátumra a Google Sheet sort cseréli, a Drive/OneDrive fájlokat pedig ugyanarra a névre írja.
 
 ## Logging
 

@@ -94,7 +94,7 @@ The workflow is already defined here:
 .github/workflows/daily_funnel_report.yml
 ```
 
-It runs at `04:00` and `05:00` UTC and keeps only the run that is `06:00` in `Europe/Budapest`.
+It runs at `03:59` and `04:59` UTC to cover `05:59` in `Europe/Budapest` across daylight saving time. The guard allows the local `05:00`-`06:59` window because GitHub scheduled runs can start late. The report writes the same report date idempotently, so a delayed fallback run replaces the same Sheet row and Drive/OneDrive filenames.
 
 It can also be started manually from:
 
