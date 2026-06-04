@@ -83,6 +83,59 @@ def filter_appointments_for_day(
     return daily
 
 
+def replace_date_range_rows(
+    sheets: GoogleSheetsClient,
+    *,
+    tab_name: str,
+    start_date: date,
+    end_date: date,
+    rows: list[list[Any]],
+) -> None:
+    range_name = f"'{tab_name}'!A:Z"
+    response = (
+        sheets.service.spreadsheets()
+        .values()
+        .get(spreadsheetId=sheets.spreadsheet_id, range=range_name)
+        .execute()
+    )
+    values = response.get("values", [])
+    header = values[:1]
+    existing_rows = values[1:]
+    kept_rows = []
+    for row in existing_rows:
+        if not row:
+            kept_rows.append(row)
+            continue
+        try:
+            row_date = parse_iso_date(str(row[0]))
+        except ValueError:
+            kept_rows.append(row)
+            continue
+        if not (start_date <= row_date <= end_date):
+            kept_rows.append(row)
+
+    next_values = header + kept_rows + rows
+    logger.info(
+        "Replacing Google Sheets date range tab=%s start=%s end=%s row_count=%s",
+        tab_name,
+        start_date,
+        end_date,
+        len(rows),
+    )
+    sheets.service.spreadsheets().values().clear(
+        spreadsheetId=sheets.spreadsheet_id,
+        range=range_name,
+        body={},
+    ).execute()
+    if next_values:
+        sheets.service.spreadsheets().values().update(
+            spreadsheetId=sheets.spreadsheet_id,
+            range=f"'{tab_name}'!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": next_values},
+        ).execute()
+
+
 def main() -> None:
     load_dotenv()
     configure_logging()
@@ -125,6 +178,7 @@ def main() -> None:
 
     sheets = GoogleSheetsClient(credentials_path, spreadsheet_id)
     sheets.ensure_tabs(SHEET_TABS)
+    backfill_rows: dict[str, list[list[Any]]] = {tab_name: [] for tab_name in SHEET_TABS}
 
     for report_date in each_day(start_date, end_date):
         day_started_at = time.perf_counter()
@@ -156,18 +210,23 @@ def main() -> None:
             created_at=datetime.now(),
         )
         for tab_name, tab_rows in historical_rows.items():
-            sheets.replace_date_rows(
-                tab_name=tab_name,
-                date_value=report_date.isoformat(),
-                rows=tab_rows,
-            )
+            backfill_rows[tab_name].extend(tab_rows)
         logger.info(
-            "Backfilled date=%s contacts=%s appointments=%s sheet_rows=%s in %.2fs",
+            "Prepared date=%s contacts=%s appointments=%s sheet_rows=%s in %.2fs",
             report_date,
             len(contacts),
             len(daily_appointments),
             sum(len(tab_rows) for tab_rows in historical_rows.values()),
             time.perf_counter() - day_started_at,
+        )
+
+    for tab_name, rows in backfill_rows.items():
+        replace_date_range_rows(
+            sheets,
+            tab_name=tab_name,
+            start_date=start_date,
+            end_date=end_date,
+            rows=rows,
         )
 
     logger.info("Completed daily GHL Sheet backfill in %.2fs", time.perf_counter() - started_at)
