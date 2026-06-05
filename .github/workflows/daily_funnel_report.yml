@@ -6,11 +6,6 @@ on:
     # offsets for 05:59 Europe/Budapest. The guard below allows a wider
     # local window because GitHub scheduled runs can start late.
     - cron: "59 3,4 * * *"
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/daily_funnel_report.yml"
   workflow_dispatch:
     inputs:
       report_date:
@@ -59,7 +54,7 @@ jobs:
         id: budapest_time
         run: |
           local_hhmm="$(TZ=Europe/Budapest date +%H%M)"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "push" ] || { [ "$local_hhmm" -ge 500 ] && [ "$local_hhmm" -le 659 ]; }; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "$local_hhmm" -ge 500 ] && [ "$local_hhmm" -le 659 ]; }; then
             echo "run_report=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
