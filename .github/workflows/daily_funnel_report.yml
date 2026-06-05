@@ -54,7 +54,13 @@ jobs:
         id: budapest_time
         run: |
           local_hhmm="$(TZ=Europe/Budapest date +%H%M)"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "$local_hhmm" -ge 500 ] && [ "$local_hhmm" -le 659 ]; }; then
+          local_offset="$(TZ=Europe/Budapest date +%z)"
+          if [ "$local_offset" = "+0200" ]; then
+            expected_schedule="59 3 * * *"
+          else
+            expected_schedule="59 4 * * *"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ] && [ "$local_hhmm" -ge 500 ] && [ "$local_hhmm" -le 659 ]; }; then
             echo "run_report=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
