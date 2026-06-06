@@ -633,6 +633,7 @@
           <thead>
             <tr>
               <th>Hirdetéssorozat</th>
+              <th>Funnel</th>
               <th>Döntés</th>
               <th>Költés</th>
               <th>Landing view</th>
@@ -646,6 +647,7 @@
             {% for row in decision_report.meta.adsets %}
             <tr>
               <td>{{ row.name }}</td>
+              <td>{{ row.funnel_type_label }}</td>
               <td><span class="decision-pill">{{ row.decision }}</span></td>
               <td>{{ row.spend|int }} Ft</td>
               <td>{{ row.landing_page_views }}</td>
@@ -656,7 +658,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="8">Nincs elérhető Meta hirdetéssorozat adat erre a napra.</td>
+              <td colspan="9">Nincs elérhető Meta hirdetéssorozat adat erre a napra.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -699,7 +701,11 @@
       <div class="section-header">
         <div>
           <h2>Landing kontroll</h2>
+          {% if decision_report.funnel_type == 'webinar' %}
+          <p>Webinár instant form funnel: landing view és GA4 thank-you kontroll ennél a riportnál nem releváns.</p>
+          {% else %}
           <p>GA4 oldalforgalmi kontroll. Ez nem ugyanaz a definíció, mint a Meta attribúciós konverzió.</p>
+          {% endif %}
         </div>
       </div>
       <div class="table-shell">

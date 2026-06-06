@@ -24,7 +24,17 @@ def is_excluded_event_contact(contact: dict[str, Any]) -> bool:
 
 
 def is_excluded_event_meta_row(row: dict[str, Any]) -> bool:
+    row_date = _parse_date(row.get("date") or row.get("date_start") or row.get("report_date"))
+    end_date = _excluded_event_end_date()
+    if row_date is not None and end_date is not None and row_date > end_date:
+        return False
     return _matches_excluded_patterns(row)
+
+
+def infer_funnel_type_from_meta_row(row: dict[str, Any]) -> str:
+    if _matches_excluded_patterns(row):
+        return "webinar"
+    return "landing"
 
 
 def _within_excluded_date_window(contact: dict[str, Any]) -> bool:

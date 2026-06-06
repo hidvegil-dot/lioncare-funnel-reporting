@@ -1,8 +1,31 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from typing import Any
 
+
+DAILY_REPORT_INDEX_COLUMNS = [
+    "date",
+    "report_html_link",
+    "report_csv_link",
+    "funnel_type",
+    "total_spend",
+    "meta_complete_registration",
+    "ghl_leads",
+    "meta_cpl",
+    "ghl_cpl",
+    "booked_leads",
+    "showed_leads",
+    "closed_leads",
+    "lead_to_booking_pct",
+    "booking_to_show_pct",
+    "show_to_close_pct",
+    "unattributed_leads",
+    "current_crm_total",
+    "recommended_decision",
+    "created_at",
+]
 
 DAILY_GHL_SUMMARY_COLUMNS = [
     "date",
@@ -64,6 +87,7 @@ DAILY_GHL_LANDING_COLUMNS = [
 ]
 
 SHEET_TABS = {
+    "daily_report_index": DAILY_REPORT_INDEX_COLUMNS,
     "daily_ghl_summary": DAILY_GHL_SUMMARY_COLUMNS,
     "daily_ghl_diagnosis": DAILY_GHL_DIAGNOSIS_COLUMNS,
     "daily_ghl_status": DAILY_GHL_STATUS_COLUMNS,
@@ -79,12 +103,18 @@ def build_historical_rows(
     decision_report: dict[str, Any] | None,
     ga4_data: dict[str, Any] | None,
     meta_data: dict[str, Any] | None,
+    report_links: dict[str, str] | None = None,
     created_at: datetime | None = None,
 ) -> dict[str, list[list[Any]]]:
-    created_at_value = (created_at or datetime.now()).isoformat(timespec="seconds")
+    created_at_value = (
+        created_at or datetime.now(ZoneInfo("Europe/Budapest"))
+    ).isoformat(timespec="seconds")
     decision_report = decision_report or {}
     ghl = decision_report.get("ghl") or {}
     diagnosis = decision_report.get("diagnosis") or {}
+    calculated = decision_report.get("calculated") or {}
+    meta = decision_report.get("meta") or {}
+    report_links = report_links or {}
     owner_rows = ghl.get("current_crm_by_owner", [])
     unassigned_count = sum(
         int(row.get("total", 0))
@@ -117,6 +147,30 @@ def build_historical_rows(
             "current_closed": daily_current_status.get("closed", 0),
             "current_unknown": daily_current_status.get("unknown", 0),
             "unassigned_count": unassigned_count,
+            "created_at": created_at_value,
+        },
+    )
+    daily_report_index = _row_values(
+        DAILY_REPORT_INDEX_COLUMNS,
+        {
+            "date": report_date.isoformat(),
+            "report_html_link": report_links.get("html", ""),
+            "report_csv_link": report_links.get("csv", ""),
+            "funnel_type": decision_report.get("funnel_type", "landing"),
+            "total_spend": meta.get("spend", 0),
+            "meta_complete_registration": meta.get("registration_leads", 0),
+            "ghl_leads": ghl.get("total_leads", summary.get("new_leads", 0)),
+            "meta_cpl": calculated.get("meta_cpl", 0),
+            "ghl_cpl": calculated.get("ghl_lead_cost", 0),
+            "booked_leads": summary.get("booked_leads", 0),
+            "showed_leads": summary.get("showed_leads", 0),
+            "closed_leads": summary.get("closed_leads", 0),
+            "lead_to_booking_pct": summary.get("lead_to_booking_pct", 0),
+            "booking_to_show_pct": summary.get("booking_to_show_pct", 0),
+            "show_to_close_pct": summary.get("show_to_close_pct", 0),
+            "unattributed_leads": ghl.get("unattributed_leads", 0),
+            "current_crm_total": ghl.get("current_crm_total", 0),
+            "recommended_decision": diagnosis.get("daily_summary", decision_report.get("executive_summary", "")),
             "created_at": created_at_value,
         },
     )
@@ -193,6 +247,7 @@ def build_historical_rows(
     ]
 
     return {
+        "daily_report_index": [daily_report_index],
         "daily_ghl_summary": [daily_ghl_summary],
         "daily_ghl_diagnosis": [daily_ghl_diagnosis],
         "daily_ghl_status": daily_ghl_status_rows,

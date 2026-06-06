@@ -4,7 +4,7 @@ import os
 import unittest
 from datetime import date
 
-from funnel_filters import filter_funnel_contacts, filter_meta_rows
+from funnel_filters import filter_funnel_contacts, filter_meta_rows, infer_funnel_type_from_meta_row
 
 
 class FunnelFilterTest(unittest.TestCase):
@@ -41,11 +41,23 @@ class FunnelFilterTest(unittest.TestCase):
 
     def test_filters_webinar_meta_rows(self) -> None:
         rows = [
-            {"campaign_name": "Webinár event 05.16", "spend": "1000"},
+            {"campaign_name": "Webinár event 05.16", "spend": "1000", "date_start": "2026-05-16"},
             {"campaign_name": "LC+ szolgáltatók", "adset_name": "SKÁLÁZD ÓVATOSAN", "spend": "2000"},
         ]
 
         self.assertEqual(["LC+ szolgáltatók"], [row["campaign_name"] for row in filter_meta_rows(rows)])
+
+    def test_webinar_meta_rows_are_not_excluded_after_cutoff_date(self) -> None:
+        rows = [
+            {"campaign_name": "Webinár event utókövetés", "spend": "1000", "date_start": "2026-05-17"},
+            {"campaign_name": "Webinár event 05.16", "spend": "1000", "date_start": "2026-05-16"},
+        ]
+
+        self.assertEqual(["Webinár event utókövetés"], [row["campaign_name"] for row in filter_meta_rows(rows)])
+
+    def test_infers_webinar_funnel_type_without_cutoff_filtering(self) -> None:
+        self.assertEqual("webinar", infer_funnel_type_from_meta_row({"campaign_name": "Webinár instant form"}))
+        self.assertEqual("landing", infer_funnel_type_from_meta_row({"campaign_name": "LC+ szolgáltatók"}))
 
     def _restore_env(self, key: str, value: str | None) -> None:
         if value is None:

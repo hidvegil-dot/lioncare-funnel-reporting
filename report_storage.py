@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from parser import SHEET_TABS, build_historical_rows
 
@@ -123,6 +124,7 @@ def persist_daily_report_history(
     }
     if not drive_upload_enabled:
         logger.info("Skipping Google Drive upload because REPORT_DRIVE_UPLOAD_ENABLED is disabled")
+    report_links: dict[str, str] = {}
     try:
         if not drive_upload_enabled:
             raise _DriveUploadSkipped()
@@ -160,8 +162,28 @@ def persist_daily_report_history(
             root_folder_id=root_folder_id,
         )
         drive.ensure_folder_path(["riport", "archive"], root_folder_id=root_folder_id)
-        drive.upload_file(dated_html_path, folder_id=daily_folder_id, filename="daily_funnel_report.html")
-        drive.upload_file(dated_csv_path, folder_id=daily_folder_id, filename="daily_funnel_report.csv")
+        dated_html_id = drive.upload_file(
+            dated_html_path,
+            folder_id=daily_folder_id,
+            filename=dated_html_path.name,
+        )
+        dated_csv_id = drive.upload_file(
+            dated_csv_path,
+            folder_id=daily_folder_id,
+            filename=dated_csv_path.name,
+        )
+        drive.upload_file(
+            dated_html_path,
+            folder_id=daily_folder_id,
+            filename="latest_daily_funnel_report.html",
+        )
+        drive.upload_file(
+            dated_csv_path,
+            folder_id=daily_folder_id,
+            filename="latest_daily_funnel_report.csv",
+        )
+        report_links["html"] = drive.get_file_link(dated_html_id)
+        report_links["csv"] = drive.get_file_link(dated_csv_id)
         logger.info("Completed Google Drive daily report upload date=%s", report_date)
     except _DriveUploadSkipped:
         pass
@@ -182,7 +204,8 @@ def persist_daily_report_history(
             decision_report=decision_report,
             ga4_data=ga4_data,
             meta_data=meta_data,
-            created_at=datetime.now(),
+            report_links=report_links,
+            created_at=datetime.now(ZoneInfo("Europe/Budapest")),
         )
         for tab_name, rows in historical_rows.items():
             sheets.replace_date_rows(

@@ -64,6 +64,11 @@ jobs:
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Fail inactive schedule guard
+        if: steps.budapest_time.outputs.run_report != 'true'
+        run: |
+          echo "::error title=Inactive daily schedule::This scheduled run is not the active Europe/Budapest 05:59 UTC offset. Failing intentionally so skipped report runs are not silent green successes."
+          exit 1
       - uses: actions/checkout@v4
         if: steps.budapest_time.outputs.run_report == 'true'
       - uses: actions/setup-python@v5
@@ -138,8 +143,10 @@ jobs:
           month="${report_date:5:2}"
           daily_path="${root_path}/daily/${year}/${month}/${report_date}"
           rclone mkdir "onedrive:${daily_path}"
-          rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/daily_funnel_report.html"
-          rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/daily_funnel_report.csv"
+          rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/daily_funnel_report_${report_date}.html"
+          rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/daily_funnel_report_${report_date}.csv"
+          rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/latest_daily_funnel_report.html"
+          rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/latest_daily_funnel_report.csv"
       - name: Upload report artifacts
         if: steps.budapest_time.outputs.run_report == 'true' && always()
         uses: actions/upload-artifact@v4

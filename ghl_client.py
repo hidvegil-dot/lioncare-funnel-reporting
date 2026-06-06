@@ -293,6 +293,12 @@ class GHLClient:
             "source": contact.get("source"),
             "campaign": contact.get("campaign"),
             "landing_page_url": self._extract_landing_page_url(contact),
+            "created_date": self._parse_date_value(
+                contact.get("dateAdded")
+                or contact.get("createdAt")
+                or contact.get("date_added")
+                or contact.get("created_date")
+            ),
             "raw": contact,
         }
 
@@ -549,7 +555,11 @@ class GHLClient:
         return data.get("contact") or data.get("data") or data
 
     def _contact_matches_window(self, contact: dict[str, Any], start_date: date, end_date: date) -> bool:
-        for field_name in ("lead_date", "first_booking_date", "show_date", "close_date"):
+        lead_date = contact.get("lead_date") or contact.get("created_date")
+        if isinstance(lead_date, date) and start_date <= lead_date <= end_date:
+            return True
+
+        for field_name in ("first_booking_date", "show_date", "close_date"):
             field_value = contact.get(field_name)
             if isinstance(field_value, date) and start_date <= field_value <= end_date:
                 return True

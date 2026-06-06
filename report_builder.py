@@ -18,6 +18,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Flowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from funnel_filters import infer_funnel_type_from_meta_row
+
 
 FUNNEL_FIELDS = [
     "new_leads",
@@ -242,7 +244,7 @@ def build_landing_lead_cards(
 ) -> list[dict[str, Any]]:
     counts: Counter[str] = Counter()
     for contact in contacts:
-        lead_date = contact.get("lead_date")
+        lead_date = _contact_lead_date(contact)
         if not isinstance(lead_date, date) or not (start_date <= lead_date <= end_date):
             continue
         landing_url = contact.get("landing_page_url")
@@ -281,6 +283,7 @@ def build_daily_decision_report(
     meta_summary = (meta_data or {}).get("summary") or {}
     ga4_summary = (ga4_data or {}).get("landing_performance", {}).get("summary") or {}
     meta_adsets = _build_meta_adset_rows((meta_data or {}).get("adsets") or [])
+    funnel_type = _infer_daily_funnel_type(meta_adsets)
 
     link_click = int(meta_summary.get("link_click", 0))
     landing_page_view = int(meta_summary.get("landing_page_views", 0))
@@ -295,24 +298,15 @@ def build_daily_decision_report(
     meta_vs_ghl_delta_pct = _difference_pct(meta_leads, ghl_total)
     meta_vs_ga4_delta_pct = _difference_pct(landing_page_view, ga4_page_view)
     meta_vs_ga4_thank_you_delta_pct = _difference_pct(meta_leads, ga4_thank_you_page_view)
-    diagnosis_status = "OK"
-    if abs(meta_vs_ga4_delta_pct) > 20:
-        diagnosis_status = "DEFINÍCIÓS ELTÉRÉS"
-    elif abs(meta_vs_ga4_thank_you_delta_pct) > 20 or abs(meta_vs_ghl_delta_pct) > 20:
-        diagnosis_status = "ATTRIBÚCIÓS ELTÉRÉS"
-
-    if abs(meta_vs_ga4_delta_pct) > 20:
-        diagnosis_text = "A Meta landing view és a GA4 összes landing page view nem ugyanazt a kört méri: a GA4 minden forrást és minden beállított landinget tartalmaz, ezért ezt definíciós eltérésként kell kezelni."
-    elif abs(meta_vs_ga4_thank_you_delta_pct) > 20:
-        diagnosis_text = "A Meta attribúciós Lead és a GA4 thank-you users jelentősen eltér, ezért ezt attribúciós eltérésként kell kezelni, nem tiszta webes befejezésként."
-    elif abs(meta_vs_ghl_delta_pct) > 20:
-        diagnosis_text = "A Meta attribúciós Lead és a GHL új lead jelentősen eltér, ezért a Meta hirdetési attribúció és a CRM új lead definíció nem ugyanaz."
-    elif link_click and not ga4_page_view:
-        diagnosis_text = "Van hirdetéskattintás, de nincs mérhető landing forgalom, ezért a landing mérés hibás."
-    elif ga4_page_view and not ghl_total:
-        diagnosis_text = "Van landing forgalom, de nincs GHL lead, ezért a landing vagy az űrlap teljesít gyengén."
-    else:
-        diagnosis_text = "Az aznapi Meta, GA4 és GHL számok közel azonos képet adnak, a mérés jelenleg konzisztens."
+    diagnosis_status, diagnosis_text = _build_measurement_diagnosis(
+        funnel_type=funnel_type,
+        meta_vs_ga4_delta_pct=meta_vs_ga4_delta_pct,
+        meta_vs_ga4_thank_you_delta_pct=meta_vs_ga4_thank_you_delta_pct,
+        meta_vs_ghl_delta_pct=meta_vs_ghl_delta_pct,
+        link_click=link_click,
+        ga4_page_view=ga4_page_view,
+        ghl_total=ghl_total,
+    )
 
     best_adset = _select_best_adset(meta_adsets)
     worst_adset = _select_worst_adset(meta_adsets)
@@ -321,6 +315,7 @@ def build_daily_decision_report(
 
     return {
         "report_date": report_date.isoformat(),
+        "funnel_type": funnel_type,
         "meta": {
             "spend": round(spend, 2),
             "impressions": int(meta_summary.get("impressions", 0)),
@@ -358,6 +353,7 @@ def build_daily_decision_report(
             "ghl_lead_cost": round(spend / ghl_total, 2) if ghl_total else 0.0,
         },
         "kpi_statuses": _build_daily_kpi_statuses(
+            funnel_type=funnel_type,
             spend=spend,
             link_click=link_click,
             landing_page_view=landing_page_view,
@@ -370,8 +366,12 @@ def build_daily_decision_report(
         ),
         "diagnosis": {
             "meta_lead_vs_ghl_lead": "OK" if abs(meta_vs_ghl_delta_pct) <= 20 else "ATTRIBÚCIÓS ELTÉRÉS",
-            "meta_landing_vs_ga4_page_view": "OK" if abs(meta_vs_ga4_delta_pct) <= 20 else "DEFINÍCIÓS ELTÉRÉS",
-            "meta_lead_vs_ga4_thank_you": "OK" if abs(meta_vs_ga4_thank_you_delta_pct) <= 20 else "ATTRIBÚCIÓS ELTÉRÉS",
+            "meta_landing_vs_ga4_page_view": (
+                "N/A" if funnel_type == "webinar" else "OK" if abs(meta_vs_ga4_delta_pct) <= 20 else "DEFINÍCIÓS ELTÉRÉS"
+            ),
+            "meta_lead_vs_ga4_thank_you": (
+                "N/A" if funnel_type == "webinar" else "OK" if abs(meta_vs_ga4_thank_you_delta_pct) <= 20 else "ATTRIBÚCIÓS ELTÉRÉS"
+            ),
             "overall_status": diagnosis_status,
             "text": diagnosis_text,
             "daily_summary": _build_daily_summary_text(
@@ -405,7 +405,7 @@ def _build_ghl_status_rows(
 ) -> list[dict[str, Any]]:
     counts: Counter[str] = Counter()
     for contact in contacts:
-        lead_date = contact.get("lead_date")
+        lead_date = _contact_lead_date(contact)
         if not isinstance(lead_date, date) or not (start_date <= lead_date <= end_date):
             continue
         status = str(contact.get("lead_status") or "unknown").strip().lower()
@@ -550,7 +550,7 @@ def _count_unattributed_leads(
 ) -> int:
     total = 0
     for contact in contacts:
-        lead_date = contact.get("lead_date")
+        lead_date = _contact_lead_date(contact)
         if not isinstance(lead_date, date) or not (start_date <= lead_date <= end_date):
             continue
         if not contact.get("landing_page_url"):
@@ -569,6 +569,72 @@ def _status_label(status: str) -> str:
     return mapping.get(status, status)
 
 
+def _contact_lead_date(contact: dict[str, Any]) -> date | None:
+    lead_date = contact.get("lead_date") or contact.get("created_date")
+    return lead_date if isinstance(lead_date, date) else None
+
+
+def _infer_daily_funnel_type(meta_adsets: list[dict[str, Any]]) -> str:
+    funnel_types = {str(row.get("funnel_type") or "landing") for row in meta_adsets}
+    if "webinar" in funnel_types and "landing" in funnel_types:
+        return "mixed"
+    if "webinar" in funnel_types:
+        return "webinar"
+    return "landing"
+
+
+def _funnel_type_label(funnel_type: str) -> str:
+    mapping = {
+        "landing": "Landing",
+        "webinar": "Webinár űrlap",
+        "mixed": "Vegyes",
+    }
+    return mapping.get(funnel_type, funnel_type)
+
+
+def _build_measurement_diagnosis(
+    *,
+    funnel_type: str,
+    meta_vs_ga4_delta_pct: float,
+    meta_vs_ga4_thank_you_delta_pct: float,
+    meta_vs_ghl_delta_pct: float,
+    link_click: int,
+    ga4_page_view: int,
+    ghl_total: int,
+) -> tuple[str, str]:
+    if funnel_type == "webinar":
+        if abs(meta_vs_ghl_delta_pct) > 20:
+            return (
+                "ATTRIBÚCIÓS ELTÉRÉS",
+                "Webinár instant form funnel: landing és GA4 thank-you kontroll nem releváns, a fő egyezést a Meta űrlap lead és a GHL lead között kell nézni.",
+            )
+        return (
+            "WEBINÁR_FORM",
+            "Webinár instant form funnel: landing view, click → landing és GA4 thank-you hiány nem hiba. A fő kontroll a Meta űrlap lead és a GHL-be bejutott webinár lead.",
+        )
+
+    if abs(meta_vs_ga4_delta_pct) > 20:
+        return (
+            "DEFINÍCIÓS ELTÉRÉS",
+            "A Meta landing view és a GA4 összes landing page view nem ugyanazt a kört méri: a GA4 minden forrást és minden beállított landinget tartalmaz, ezért ezt definíciós eltérésként kell kezelni.",
+        )
+    if abs(meta_vs_ga4_thank_you_delta_pct) > 20:
+        return (
+            "ATTRIBÚCIÓS ELTÉRÉS",
+            "A Meta attribúciós Lead és a GA4 thank-you users jelentősen eltér, ezért ezt attribúciós eltérésként kell kezelni, nem tiszta webes befejezésként.",
+        )
+    if abs(meta_vs_ghl_delta_pct) > 20:
+        return (
+            "ATTRIBÚCIÓS ELTÉRÉS",
+            "A Meta attribúciós Lead és a GHL új lead jelentősen eltér, ezért a Meta hirdetési attribúció és a CRM új lead definíció nem ugyanaz.",
+        )
+    if link_click and not ga4_page_view:
+        return ("BEAVATKOZÁS", "Van hirdetéskattintás, de nincs mérhető landing forgalom, ezért a landing mérés hibás.")
+    if ga4_page_view and not ghl_total:
+        return ("BEAVATKOZÁS", "Van landing forgalom, de nincs GHL lead, ezért a landing vagy az űrlap teljesít gyengén.")
+    return ("OK", "Az aznapi Meta, GA4 és GHL számok közel azonos képet adnak, a mérés jelenleg konzisztens.")
+
+
 def _build_meta_adset_rows(adsets: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for adset in sorted(adsets, key=lambda row: float(row.get("spend", 0.0)), reverse=True):
@@ -578,9 +644,12 @@ def _build_meta_adset_rows(adsets: list[dict[str, Any]]) -> list[dict[str, Any]]
         registration_leads = int(adset.get("registration_leads", 0))
         pixel_leads = int(adset.get("leads", 0))
         meta_leads = registration_leads
+        funnel_type = infer_funnel_type_from_meta_row(adset)
         rows.append(
             {
                 "name": adset.get("name") or adset.get("adset_name") or "Ismeretlen hirdetéssorozat",
+                "funnel_type": funnel_type,
+                "funnel_type_label": _funnel_type_label(funnel_type),
                 "spend": round(spend, 2),
                 "impressions": int(adset.get("impressions", 0)),
                 "link_click": link_click,
@@ -593,12 +662,14 @@ def _build_meta_adset_rows(adsets: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "click_to_landing_pct": safe_pct(landing_page_views, link_click),
                 "cost_per_meta_conversion": round(spend / meta_leads, 2) if meta_leads else 0.0,
                 "evaluation": _evaluate_meta_adset(
+                    funnel_type=funnel_type,
                     spend=spend,
                     link_click=link_click,
                     landing_page_views=landing_page_views,
                     registration_leads=meta_leads,
                 ),
                 "decision": _decide_meta_adset_action(
+                    funnel_type=funnel_type,
                     spend=spend,
                     landing_page_views=landing_page_views,
                     registration_leads=meta_leads,
@@ -639,6 +710,7 @@ def _build_meta_learning_event_rows(meta_summary: dict[str, Any]) -> list[dict[s
 
 def _decide_meta_adset_action(
     *,
+    funnel_type: str = "landing",
     spend: float,
     landing_page_views: int,
     registration_leads: int,
@@ -650,7 +722,7 @@ def _decide_meta_adset_action(
         return "TARTSD"
     if spend >= 5000 and registration_leads == 0:
         return "ÁLLÍTSD LE / CSERÉLD"
-    if spend >= 3000 and landing_page_views >= 15 and registration_leads == 0:
+    if funnel_type != "webinar" and spend >= 3000 and landing_page_views >= 15 and registration_leads == 0:
         return "FIGYELD SZOROSAN"
     return "ADATGYŰJTÉS"
 
@@ -740,6 +812,7 @@ def _build_daily_summary_text(
 
 def _build_daily_kpi_statuses(
     *,
+    funnel_type: str = "landing",
     spend: float,
     link_click: int,
     landing_page_view: int,
@@ -755,16 +828,18 @@ def _build_daily_kpi_statuses(
     click_to_landing = safe_pct(landing_page_view, link_click)
     landing_to_lead = safe_pct(ghl_total, landing_page_view)
     cpc = round(spend / link_click, 2) if link_click else 0.0
+    landing_status = "N/A" if funnel_type == "webinar" else _status_from_ranges(click_to_landing, ok_min=70, watch_min=60)
+    landing_to_lead_status = "N/A" if funnel_type == "webinar" else _status_from_ranges(landing_to_lead, ok_min=5, watch_min=3)
 
     return {
         "meta_spend": _status_from_thresholds(spend, ok_min=1000, watch_min=1),
         "link_click": _link_click_status(cpc=cpc, ctr=ctr),
-        "landing_page_view": _status_from_ranges(click_to_landing, ok_min=70, watch_min=60),
+        "landing_page_view": landing_status,
         "ghl_lead": _status_from_thresholds(ghl_total, ok_min=3, watch_min=1),
         "meta_cpl": _inverse_status_from_thresholds(meta_cpl, ok_max=3000, watch_max=5000, zero_is_bad=True),
         "ghl_lead_cost": _inverse_status_from_thresholds(ghl_lead_cost, ok_max=3000, watch_max=5000, zero_is_bad=True),
-        "click_to_landing": _status_from_ranges(click_to_landing, ok_min=70, watch_min=60),
-        "landing_to_lead": _status_from_ranges(landing_to_lead, ok_min=5, watch_min=3),
+        "click_to_landing": landing_status,
+        "landing_to_lead": landing_to_lead_status,
         "lead_to_booking": _funnel_ratio_status(booked_leads, ghl_total, ok_min=30, watch_min=10),
         "booking_to_show": _funnel_ratio_status(showed_leads, booked_leads, ok_min=70, watch_min=50),
         "show_to_close": _funnel_ratio_status(closed_leads, showed_leads, ok_min=20, watch_min=10),
@@ -826,11 +901,18 @@ def _link_click_status(*, cpc: float, ctr: float) -> str:
 
 def _evaluate_meta_adset(
     *,
+    funnel_type: str = "landing",
     spend: float,
     link_click: int,
     landing_page_views: int,
     registration_leads: int,
 ) -> str:
+    if funnel_type == "webinar":
+        if spend > 0 and link_click == 0 and registration_leads == 0:
+            return "Webinár: van költés, de nincs mérhető interakció vagy űrlap lead."
+        if registration_leads > 0:
+            return "Webinár: működik, hoz Meta űrlap leadet."
+        return "Webinár: landing kontroll nem releváns; Meta űrlap lead alapján értékelendő."
     if spend > 0 and link_click == 0:
         return "Hirdetés gyenge: van költés, nincs link click."
     if link_click > 0 and landing_page_views == 0:
@@ -977,7 +1059,7 @@ def _build_ghl_landing_rows(
 ) -> list[dict[str, Any]]:
     counts: Counter[str] = Counter()
     for contact in contacts:
-        lead_date = contact.get("lead_date")
+        lead_date = _contact_lead_date(contact)
         if not isinstance(lead_date, date) or not (start_date <= lead_date <= end_date):
             continue
         landing_url = contact.get("landing_page_url") or "ismeretlen"

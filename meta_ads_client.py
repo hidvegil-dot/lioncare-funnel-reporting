@@ -77,6 +77,8 @@ class MetaAdsClient:
                     "adset_name",
                     "ad_id",
                     "ad_name",
+                    "date_start",
+                    "date_stop",
                     "spend",
                     "impressions",
                     "clicks",
