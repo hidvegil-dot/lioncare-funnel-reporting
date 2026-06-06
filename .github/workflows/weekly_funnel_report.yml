@@ -50,7 +50,13 @@ jobs:
       - name: Budapest Monday 07:00 guard
         id: budapest_time
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "$(TZ=Europe/Budapest date +%u)" = "1" ] && [ "$(TZ=Europe/Budapest date +%H)" = "07" ]; }; then
+          local_offset="$(TZ=Europe/Budapest date +%z)"
+          if [ "$local_offset" = "+0200" ]; then
+            expected_schedule="0 5 * * 1"
+          else
+            expected_schedule="0 6 * * 1"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; }; then
             echo "run_report=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
@@ -107,6 +113,13 @@ jobs:
             args+=(--week-end "$WEEK_END")
           fi
           python weekly_ghl_report.py "${args[@]}"
+      - name: Verify weekly report files
+        if: steps.budapest_time.outputs.run_report == 'true'
+        run: |
+          test -s weekly_ghl_funnel_report.html
+          test -s weekly_ghl_funnel_report.csv
+          test -s weekly_ghl_ceo_summary.md
+          test -s weekly_report_run.log
       - name: Upload weekly reports to OneDrive
         if: steps.budapest_time.outputs.run_report == 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
         run: |
@@ -123,7 +136,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: weekly-ghl-funnel-report
-          if-no-files-found: ignore
+          if-no-files-found: error
           path: |
             weekly_ghl_funnel_report.html
             weekly_ghl_funnel_report.csv

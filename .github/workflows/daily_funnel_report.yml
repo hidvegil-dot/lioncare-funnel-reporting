@@ -120,6 +120,12 @@ jobs:
           else
             python run_daily_funnel_report.py
           fi
+      - name: Verify daily report files
+        if: steps.budapest_time.outputs.run_report == 'true'
+        run: |
+          test -s daily_funnel_report.html
+          test -s daily_funnel_report.csv
+          test -s report_run.log
       - name: Upload reports to OneDrive
         if: steps.budapest_time.outputs.run_report == 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
         run: |
@@ -139,7 +145,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: daily-funnel-report
-          if-no-files-found: ignore
+          if-no-files-found: error
           path: |
             daily_funnel_report.html
             daily_funnel_report.csv

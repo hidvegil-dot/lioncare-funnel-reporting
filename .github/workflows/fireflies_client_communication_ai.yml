@@ -91,13 +91,31 @@ jobs:
           python -m json.tool google-drive-oauth-token.json >/dev/null
       - name: Run meeting AI batch
         run: |
-          hour="$(date +%H)"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$hour" != "07" ]; then
-            echo "Skipping duplicate UTC schedule outside Budapest 07:00. Local hour=$hour"
+          local_offset="$(TZ=Europe/Budapest date +%z)"
+          if [ "$local_offset" = "+0200" ]; then
+            expected_schedule="0 5 * * *"
+          else
+            expected_schedule="0 6 * * *"
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" != "$expected_schedule" ]; then
+            echo "Skipping duplicate UTC schedule outside Budapest 07:00. schedule=${{ github.event.schedule }} expected=${expected_schedule}"
             exit 0
           fi
           python run_fireflies_meeting_ai.py \
             --lookback-hours "${{ inputs.lookback_hours || '24' }}"
+      - name: Verify meeting AI log
+        if: always()
+        run: |
+          local_offset="$(TZ=Europe/Budapest date +%z)"
+          if [ "$local_offset" = "+0200" ]; then
+            expected_schedule="0 5 * * *"
+          else
+            expected_schedule="0 6 * * *"
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" != "$expected_schedule" ]; then
+            exit 0
+          fi
+          test -s meeting_ai_run.log
       - name: Upload meeting AI logs
         if: always()
         uses: actions/upload-artifact@v4
