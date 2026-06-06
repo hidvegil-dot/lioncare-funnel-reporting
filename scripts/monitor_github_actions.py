@@ -38,15 +38,16 @@ CHECKS: tuple[WorkflowCheck, ...] = (
         max_age_hours=36,
     ),
     WorkflowCheck(
-        workflow_name="Weekly GHL Funnel Report",
+        workflow_name="Weekly Funnel HTML Report",
         workflow_file="weekly_funnel_report.yml",
         required_steps=(
             "Budapest Monday 07:00 guard",
-            "Run weekly GHL report",
-            "Upload weekly reports to OneDrive",
-            "Upload weekly report artifacts",
+            "Run weekly HTML report",
+            "Verify weekly HTML report files",
+            "Upload weekly HTML report to OneDrive",
+            "Upload weekly HTML report artifacts",
         ),
-        required_artifact="weekly-ghl-funnel-report",
+        required_artifact="weekly-funnel-html-report",
         max_age_hours=8 * 24,
     ),
     WorkflowCheck(

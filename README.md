@@ -123,9 +123,31 @@ python main.py --report-type monthly_compare
 - `report_run.log`
 - `weekly_report_run.log`
 
-## Heti GHL vezetői funnel riport
+## Heti riport automatika
 
-Az új heti vezetői riport elsődleges forrása közvetlenül a GoHighLevel. Nem a HTML riportból és nem a Google Sheetből fejti vissza az adatokat. A Google Sheet csak historikus mentési cél.
+A heti GitHub Actions automatika jelenleg a régi HTML heti riportot készíti. Ez a `main.py --report-type weekly_compare` futtatásból jön, és a fő kimenet:
+
+- `weekly_funnel_report.html`
+
+A korábban kiépített új GHL/AI heti vezetői elemzés nem fut automatikusan a heti workflow-ban, mert a heti automatikus outputként csak a régi HTML riport kell.
+
+Kézi futtatás a régi HTML heti riporthoz:
+
+```bash
+python main.py --report-type weekly_compare
+```
+
+GitHub Actions:
+
+```text
+.github/workflows/weekly_funnel_report.yml
+```
+
+Ez hétfőnként Budapest idő szerint 07:00-kor fut. Mivel a GitHub Actions cron UTC-ben működik, a workflow `05:00` és `06:00` UTC-kor is indulhat, de a guard az aktuális Europe/Budapest UTC offset alapján csak a helyes nyári vagy téli cron példányt engedi át. A workflow manuálisan is indítható.
+
+## Heti GHL vezetői funnel riport manuális használatra
+
+Az új heti vezetői riport elsődleges forrása közvetlenül a GoHighLevel. Nem a HTML riportból és nem a Google Sheetből fejti vissza az adatokat. A Google Sheet csak historikus mentési cél. Ez jelenleg manuális/igény szerinti riport, nem a heti automatikus output.
 
 Kézi futtatás az utolsó lezárt hétre:
 
@@ -184,14 +206,6 @@ GHL_USER_LABELS=user_id_1:Hidvégi László,user_id_2:Gulyás Amelita
 ```
 
 Ha egy tanácsadónak nincs adata, a riport nulla értékekkel jeleníti meg. Ha az opportunity endpoint nem elérhető, a riport nem talál ki szerződésszámot: a won/lost értékeket nullán hagyja, és adatminőségi megjegyzést ír.
-
-GitHub Actions:
-
-```text
-.github/workflows/weekly_funnel_report.yml
-```
-
-Ez hétfőnként Budapest idő szerint 07:00-kor fut. Mivel a GitHub Actions cron UTC-ben működik, a workflow `05:00` és `06:00` UTC-kor is indulhat, de egy Budapest-idő szerinti guard csak akkor engedi tovább, ha helyileg hétfő 07:00 van. A workflow manuálisan is indítható `week_start` és `week_end` inputtal.
 
 ## Historikus Google Drive és Google Sheets mentés
 
