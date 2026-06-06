@@ -1,0 +1,77 @@
+name: Legacy Weekly HTML Report
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/legacy_weekly_html_report.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: legacy-weekly-html-report
+  cancel-in-progress: false
+
+jobs:
+  legacy-weekly-html:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      GHL_USER_LABELS: ${{ secrets.GHL_USER_LABELS }}
+      GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
+      GA4_CREDENTIALS_PATH: ${{ github.workspace }}/ga4-service-account.json
+      GA4_SERVICE_ACCOUNT_JSON: ${{ secrets.GA4_SERVICE_ACCOUNT_JSON }}
+      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      META_CAMPAIGN_ID: ${{ secrets.META_CAMPAIGN_ID }}
+      REPORT_DATA_STRICT: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in \
+            GHL_API_KEY \
+            GHL_LOCATION_ID \
+            GHL_BASE_URL \
+            GA4_PROPERTY_ID \
+            GA4_SERVICE_ACCOUNT_JSON \
+            META_AD_ACCOUNT_ID \
+            META_ACCESS_TOKEN \
+            META_CAMPAIGN_ID
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Write GA4 credentials
+        run: |
+          printf '%s' "$GA4_SERVICE_ACCOUNT_JSON" > ga4-service-account.json
+          chmod 600 ga4-service-account.json
+          python -m json.tool ga4-service-account.json >/dev/null
+      - name: Run legacy weekly HTML report
+        run: python main.py --report-type weekly_compare
+      - name: Verify legacy weekly HTML files
+        run: |
+          test -s weekly_funnel_report.html
+          test -s weekly_funnel_report.csv
+          test -s report_run.log
+      - name: Upload legacy weekly HTML artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-weekly-html-report
+          if-no-files-found: error
+          path: |
+            weekly_funnel_report.html
+            weekly_funnel_report.csv
+            report_run.log
