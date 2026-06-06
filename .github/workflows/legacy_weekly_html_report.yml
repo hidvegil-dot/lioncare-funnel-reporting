@@ -1,4 +1,5 @@
 name: Legacy Weekly HTML Report
+# Temporary one-off workflow for generating the legacy weekly HTML artifact.
 
 on:
   push:
