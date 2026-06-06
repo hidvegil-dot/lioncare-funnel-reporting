@@ -1,0 +1,25 @@
+name: LionCare Actions Monitor
+
+on:
+  schedule:
+    # Runs after the morning automations, allowing for GitHub schedule delay.
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Monitor workflow runs
+        run: python scripts/monitor_github_actions.py

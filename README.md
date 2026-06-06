@@ -425,6 +425,14 @@ python scripts/audit_lioncare_automation.py
 
 Ez read-only ellenőrzést futtat a Google Drive és Google Sheet struktúrán: meeting mappák kötelező fájljai, `meeting_ai_log` duplikációk, kötelező Sheet tabok és kulcsoszlopok. Hibánál nem javít csendben, hanem nem nulla exit kóddal áll meg.
 
+GitHub Actions futásmonitor lokálisan:
+
+```bash
+python scripts/monitor_github_actions.py
+```
+
+Ez nem csak a workflow zöld státuszát ellenőrzi, hanem a kulcslépéseket, a `skipped` állapotot és a kötelező artifactokat is. A felhőben a `.github/workflows/github_actions_monitor.yml` futtatja naponta, a reggeli automatizmusok után.
+
 OpenAI API keret nélkül a teljes Drive/Sheet csővezeték tesztelhető mock módban:
 
 ```bash
@@ -441,7 +449,7 @@ force_reprocess=true
 
 Hosszú transcript esetén a rendszer először strukturált kivonatot készít, és abból generálja az outputokat, hogy ne küldje ugyanazt a teljes átiratot több külön OpenAI hívásban.
 
-Fontos: a GitHub Actions cron UTC-ben fut. A mellékelt workflow `03:59` és `04:59` UTC-kor is elindul, hogy téli és nyári időszámításban is lefedje a Budapest-idő szerinti 05:59-et. A guard step a budapesti 05:00-06:59 ablakban engedi futni a riportot, mert a GitHub scheduled runok késhetnek. A napi mentés idempotens: ugyanarra a riportdátumra a Google Sheet sort cseréli, a Drive/OneDrive fájlokat pedig ugyanarra a névre írja.
+Fontos: a GitHub Actions cron UTC-ben fut. A napi workflow `03:59` és `04:59` UTC-kor is elindul, hogy téli és nyári időszámításban is lefedje a Budapest-idő szerinti 05:59-et. A guard step nem az aktuális órát nézi, mert a GitHub scheduled runok jelentősen késhetnek, hanem az aktuális Europe/Budapest UTC offset alapján csak a helyes nyári vagy téli cron példányt engedi át. A napi mentés idempotens: ugyanarra a riportdátumra a Google Sheet sort cseréli, a Drive/OneDrive fájlokat pedig ugyanarra a névre írja.
 
 ## Logging
 
