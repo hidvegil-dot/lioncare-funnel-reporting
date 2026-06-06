@@ -1,0 +1,13 @@
+metric,current,previous,delta,pct_change,direction
+new_leads,61,40,21,52.5,up
+booked_leads,15,11,4,36.36,up
+showed_leads,9,5,4,80.0,up
+closed_leads,0,0,0,,flat
+lead_to_booking_pct,24.59,27.5,-2.91,-10.58,down
+booking_to_show_pct,60.0,45.45,14.55,32.01,up
+show_to_close_pct,0.0,0.0,0.0,,flat
+avg_meetings_per_closed,0.0,0.0,0.0,,flat
+median_meetings_per_closed,0.0,0.0,0.0,,flat
+closed_1_meeting,0,0,0,,flat
+closed_2_meetings,0,0,0,,flat
+closed_3plus_meetings,0,0,0,,flat
