@@ -125,6 +125,7 @@ def _summarize_meta_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "link_click": 0,
         "landing_page_views": 0,
         "leads": 0,
+        "meta_form_leads": 0,
         "registration_leads": 0,
         "schedule_events": 0,
         "contact_events": 0,
@@ -142,6 +143,9 @@ def _summarize_meta_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     totals["ctr"] = round((totals["link_click"] / totals["impressions"]) * 100, 2) if totals["impressions"] else 0.0
     totals["cpc"] = round(totals["spend"] / totals["link_click"], 2) if totals["link_click"] else 0.0
     totals["cost_per_lead"] = round(totals["spend"] / totals["leads"], 2) if totals["leads"] else 0.0
+    totals["cost_per_meta_form_lead"] = (
+        round(totals["spend"] / totals["meta_form_leads"], 2) if totals["meta_form_leads"] else 0.0
+    )
     totals["cost_per_landing_page_view"] = (
         round(totals["spend"] / totals["landing_page_views"], 2) if totals["landing_page_views"] else 0.0
     )
@@ -198,6 +202,7 @@ def _normalize_meta_row(row: dict[str, Any], level: str) -> dict[str, Any]:
         "cpc": _to_float(row.get("cpc")),
         "landing_page_views": actions.get("landing_page_view", 0),
         "leads": actions.get("lead", 0),
+        "meta_form_leads": actions.get("lead", 0),
         "registration_leads": registration_leads,
         "schedule_events": schedule_events,
         "contact_events": contact_events,
@@ -229,6 +234,9 @@ def _normalize_meta_row(row: dict[str, Any], level: str) -> dict[str, Any]:
         ),
     }
     result["cost_per_lead"] = round(result["spend"] / result["leads"], 2) if result["leads"] else 0.0
+    result["cost_per_meta_form_lead"] = (
+        round(result["spend"] / result["meta_form_leads"], 2) if result["meta_form_leads"] else 0.0
+    )
     return result
 
 

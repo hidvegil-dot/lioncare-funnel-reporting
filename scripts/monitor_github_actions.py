@@ -135,7 +135,7 @@ def _check_workflow(
     )
     runs = runs_payload.get("workflow_runs", [])
     expected_cutoff = now - timedelta(hours=max_age_hours)
-    candidate = _latest_meaningful_run(runs)
+    candidate = _latest_meaningful_run(repo=repo, token=token, runs=runs, check=check, warnings=warnings)
     result: dict[str, Any] = {"workflow_name": check.workflow_name}
 
     if candidate is None:
@@ -217,16 +217,46 @@ def _check_workflow(
     return result
 
 
-def _latest_meaningful_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _latest_meaningful_run(
+    *,
+    repo: str,
+    token: str,
+    runs: list[dict[str, Any]],
+    check: WorkflowCheck,
+    warnings: list[str],
+) -> dict[str, Any] | None:
     for run in runs:
         if run.get("status") != "completed":
             continue
-        if run.get("event") == "schedule" and run.get("conclusion") == "success":
-            # A guard-skipped schedule run can still be green. Step checks will catch it,
-            # but prefer the newest completed run and fail loudly when its required steps skipped.
-            return run
+        if _is_inactive_guard_run(repo=repo, token=token, run=run, check=check):
+            warnings.append(
+                f"{check.workflow_name}: ignoring inactive schedule guard run "
+                f"{run.get('id')} conclusion={run.get('conclusion')}"
+            )
+            continue
         return run
     return None
+
+
+def _is_inactive_guard_run(*, repo: str, token: str, run: dict[str, Any], check: WorkflowCheck) -> bool:
+    if run.get("event") != "schedule":
+        return False
+    run_id = run.get("id")
+    if not run_id:
+        return False
+    jobs_payload = _github_json(repo=repo, token=token, path=f"/actions/runs/{run_id}/jobs?per_page=100")
+    jobs = jobs_payload.get("jobs", [])
+    all_steps = [step for job in jobs for step in job.get("steps", [])]
+    required = {step.get("name"): step.get("conclusion") for step in all_steps if step.get("name") in check.required_steps}
+    if not required:
+        return False
+    skipped_required = [name for name, conclusion in required.items() if conclusion == "skipped"]
+    inactive_guard_failed = any(
+        step.get("name", "").lower().startswith("fail inactive")
+        and step.get("conclusion") == "failure"
+        for step in all_steps
+    )
+    return bool(skipped_required) and inactive_guard_failed
 
 
 def _github_json(*, repo: str, token: str, path: str) -> dict[str, Any]:

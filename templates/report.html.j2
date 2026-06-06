@@ -470,12 +470,12 @@
               <span class="signal-dot"></span>{{ decision_report.kpi_statuses.meta_cpl }}
             </span>
           </div>
-          {% if decision_report.meta.registration_leads > 0 %}
+          {% if decision_report.meta.leads > 0 %}
           <div class="cost-value">{{ decision_report.calculated.meta_cpl|int }} Ft</div>
-          <div class="cost-sub">Költés / Meta CompleteRegistration: {{ decision_report.meta.spend|int }} Ft / {{ decision_report.meta.registration_leads }}</div>
+          <div class="cost-sub">Költés / {{ decision_report.meta.lead_label }}: {{ decision_report.meta.spend|int }} Ft / {{ decision_report.meta.leads }}</div>
           {% else %}
           <div class="cost-value">N/A</div>
-          <div class="cost-sub">Nincs Meta CompleteRegistration, ezért nincs Meta CPL.</div>
+          <div class="cost-sub">Nincs {{ decision_report.meta.lead_label }}, ezért nincs Meta CPL.</div>
           {% endif %}
         </article>
         <article class="cost-card">
@@ -495,12 +495,12 @@
         </article>
         <article class="cost-card light">
           <div class="card-topline">
-            <div class="cost-label">Meta CompleteRegistration</div>
+            <div class="cost-label">{{ decision_report.meta.lead_label }}</div>
             <span class="signal {% if decision_report.kpi_statuses.meta_cpl == 'OK' %}signal-ok{% elif decision_report.kpi_statuses.meta_cpl == 'FIGYELNI' %}signal-watch{% else %}signal-bad{% endif %}">
               <span class="signal-dot"></span>{{ decision_report.kpi_statuses.meta_cpl }}
             </span>
           </div>
-          <div class="cost-value">{{ decision_report.meta.registration_leads }}</div>
+          <div class="cost-value">{{ decision_report.meta.leads }}</div>
           <div class="cost-sub">Ezt látja a Meta optimalizációs jelként.</div>
         </article>
         <article class="cost-card light">
@@ -637,7 +637,7 @@
               <th>Döntés</th>
               <th>Költés</th>
               <th>Landing view</th>
-              <th>CompleteReg.</th>
+              <th>Meta lead</th>
               <th>CPL</th>
               <th>Click → landing</th>
               <th>Értelmezés</th>
@@ -651,8 +651,8 @@
               <td><span class="decision-pill">{{ row.decision }}</span></td>
               <td>{{ row.spend|int }} Ft</td>
               <td>{{ row.landing_page_views }}</td>
-              <td>{{ row.registration_leads }}</td>
-              <td>{% if row.registration_leads > 0 %}{{ row.cost_per_meta_conversion|int }} Ft{% else %}N/A{% endif %}</td>
+              <td>{{ row.meta_leads }} <span class="muted">({{ row.lead_label }})</span></td>
+              <td>{% if row.meta_leads > 0 %}{{ row.cost_per_meta_conversion|int }} Ft{% else %}N/A{% endif %}</td>
               <td>{{ row.click_to_landing_pct }}%</td>
               <td>{{ row.evaluation }}</td>
             </tr>
@@ -751,19 +751,27 @@
       </div>
       <div class="diagnosis-grid">
         <article class="diagnosis-card">
-          <div class="diagnosis-title">Meta CompleteRegistration vs GHL lead</div>
+          <div class="diagnosis-title">{{ decision_report.meta.lead_label }} vs GHL lead</div>
           <span class="status {% if decision_report.diagnosis.meta_lead_vs_ghl_lead == 'OK' %}status-ok{% else %}status-watch{% endif %}">{{ decision_report.diagnosis.meta_lead_vs_ghl_lead }}</span>
           <div class="diagnosis-text">{{ decision_report.calculated.meta_lead_vs_ghl_lead_delta_pct }}% eltérés</div>
         </article>
         <article class="diagnosis-card">
-          <div class="diagnosis-title">Meta CompleteRegistration vs GA4 thank-you</div>
+          <div class="diagnosis-title">{{ decision_report.meta.lead_label }} vs GA4 thank-you</div>
           <span class="status {% if decision_report.diagnosis.meta_lead_vs_ga4_thank_you == 'OK' %}status-ok{% else %}status-watch{% endif %}">{{ decision_report.diagnosis.meta_lead_vs_ga4_thank_you }}</span>
+          {% if decision_report.diagnosis.meta_lead_vs_ga4_thank_you == 'N/A' %}
+          <div class="diagnosis-text">Nem releváns webinár instant formnál</div>
+          {% else %}
           <div class="diagnosis-text">{{ decision_report.calculated.meta_lead_vs_ga4_thank_you_delta_pct }}% eltérés</div>
+          {% endif %}
         </article>
         <article class="diagnosis-card">
           <div class="diagnosis-title">Meta landing vs GA4 page view</div>
           <span class="status {% if decision_report.diagnosis.meta_landing_vs_ga4_page_view == 'OK' %}status-ok{% else %}status-watch{% endif %}">{{ decision_report.diagnosis.meta_landing_vs_ga4_page_view }}</span>
+          {% if decision_report.diagnosis.meta_landing_vs_ga4_page_view == 'N/A' %}
+          <div class="diagnosis-text">Nem releváns webinár instant formnál</div>
+          {% else %}
           <div class="diagnosis-text">{{ decision_report.calculated.meta_landing_vs_ga4_page_view_delta_pct }}% eltérés</div>
+          {% endif %}
         </article>
         <article class="diagnosis-card">
           <div class="diagnosis-title">Összállapot</div>

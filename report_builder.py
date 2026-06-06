@@ -287,10 +287,15 @@ def build_daily_decision_report(
 
     link_click = int(meta_summary.get("link_click", 0))
     landing_page_view = int(meta_summary.get("landing_page_views", 0))
+    meta_form_leads = int(meta_summary.get("meta_form_leads", meta_summary.get("leads", 0)))
     meta_pixel_leads = int(meta_summary.get("leads", 0))
     registration_leads = int(meta_summary.get("registration_leads", 0))
-    # The active GHL form sends CompleteRegistration on submission; keep the report label as Meta attributed lead.
-    meta_leads = registration_leads
+    meta_leads = _select_primary_meta_leads(
+        funnel_type=funnel_type,
+        meta_form_leads=meta_form_leads,
+        registration_leads=registration_leads,
+    )
+    meta_lead_label = _primary_meta_lead_label(funnel_type)
     ga4_page_view = int(ga4_summary.get("page_view", 0))
     ga4_thank_you_page_view = int(ga4_summary.get("thank_you_users", ga4_summary.get("thank_you_page_view", 0)))
     spend = float(meta_summary.get("spend", 0.0))
@@ -323,6 +328,8 @@ def build_daily_decision_report(
             "landing_page_view": landing_page_view,
             "leads": meta_leads,
             "attributed_leads": meta_leads,
+            "lead_label": meta_lead_label,
+            "meta_form_leads": meta_form_leads,
             "pixel_leads": meta_pixel_leads,
             "registration_leads": registration_leads,
             "ctr": round(float(meta_summary.get("ctr", 0.0)), 2),
@@ -386,6 +393,7 @@ def build_daily_decision_report(
             ),
         },
         "executive_summary": _build_daily_executive_summary(
+            funnel_type=funnel_type,
             spend=spend,
             meta_leads=meta_leads,
             ghl_total=ghl_total,
@@ -592,6 +600,22 @@ def _funnel_type_label(funnel_type: str) -> str:
     return mapping.get(funnel_type, funnel_type)
 
 
+def _select_primary_meta_leads(*, funnel_type: str, meta_form_leads: int, registration_leads: int) -> int:
+    if funnel_type == "webinar":
+        return meta_form_leads
+    if funnel_type == "mixed":
+        return max(meta_form_leads, registration_leads)
+    return registration_leads
+
+
+def _primary_meta_lead_label(funnel_type: str) -> str:
+    if funnel_type == "webinar":
+        return "Meta űrlap lead"
+    if funnel_type == "mixed":
+        return "Meta lead jel"
+    return "Meta CompleteRegistration"
+
+
 def _build_measurement_diagnosis(
     *,
     funnel_type: str,
@@ -642,9 +666,14 @@ def _build_meta_adset_rows(adsets: list[dict[str, Any]]) -> list[dict[str, Any]]
         link_click = int(adset.get("link_click", 0))
         landing_page_views = int(adset.get("landing_page_views", 0))
         registration_leads = int(adset.get("registration_leads", 0))
+        meta_form_leads = int(adset.get("meta_form_leads", adset.get("leads", 0)))
         pixel_leads = int(adset.get("leads", 0))
-        meta_leads = registration_leads
         funnel_type = infer_funnel_type_from_meta_row(adset)
+        meta_leads = _select_primary_meta_leads(
+            funnel_type=funnel_type,
+            meta_form_leads=meta_form_leads,
+            registration_leads=registration_leads,
+        )
         rows.append(
             {
                 "name": adset.get("name") or adset.get("adset_name") or "Ismeretlen hirdetéssorozat",
@@ -655,6 +684,8 @@ def _build_meta_adset_rows(adsets: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "link_click": link_click,
                 "landing_page_views": landing_page_views,
                 "meta_leads": meta_leads,
+                "lead_label": _primary_meta_lead_label(funnel_type),
+                "meta_form_leads": meta_form_leads,
                 "registration_leads": registration_leads,
                 "pixel_leads": pixel_leads,
                 "ctr": round(float(adset.get("ctr", 0.0)), 2),
@@ -729,6 +760,7 @@ def _decide_meta_adset_action(
 
 def _build_daily_executive_summary(
     *,
+    funnel_type: str = "landing",
     spend: float,
     meta_leads: int,
     ghl_total: int,
@@ -747,7 +779,7 @@ def _build_daily_executive_summary(
     if ghl_total:
         return f"{ghl_total} GHL lead érkezett {round(spend, 0):.0f} Ft költésből; most a leadből foglalásba lépést kell figyelni."
     if meta_leads:
-        return f"Meta oldalon {meta_leads} CompleteRegistration látszik, de GHL lead nincs; ezt attribúciós kontrollként kell kezelni."
+        return f"Meta oldalon {meta_leads} {_primary_meta_lead_label(funnel_type)} látszik, de GHL lead nincs; ezt attribúciós kontrollként kell kezelni."
     return "Nem volt érdemi leadmozgás; a nap inkább adatgyűjtési és mérési kontroll nap."
 
 

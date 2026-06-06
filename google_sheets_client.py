@@ -66,7 +66,7 @@ class GoogleSheetsClient:
             date_value,
             len(rows),
         )
-        range_name = f"'{tab_name}'!A:Z"
+        range_name = f"'{tab_name}'!A:{_column_letter(max(len(row) for row in rows) if rows else 26)}"
         response = (
             self.service.spreadsheets()
             .values()
@@ -105,7 +105,7 @@ class GoogleSheetsClient:
         row_values: list[Any],
     ) -> None:
         logger.info("Upserting Google Sheets row tab=%s key_column=%s key=%s", tab_name, key_column, key_value)
-        range_name = f"'{tab_name}'!A:Z"
+        range_name = f"'{tab_name}'!A:{_column_letter(len(row_values))}"
         response = (
             self.service.spreadsheets()
             .values()
@@ -148,10 +148,11 @@ class GoogleSheetsClient:
         ).execute()
 
     def _ensure_header(self, *, title: str, headers: list[str]) -> None:
+        header_range = f"'{title}'!A1:{_column_letter(len(headers))}1"
         response = (
             self.service.spreadsheets()
             .values()
-            .get(spreadsheetId=self.spreadsheet_id, range=f"'{title}'!A1:Z1")
+            .get(spreadsheetId=self.spreadsheet_id, range=header_range)
             .execute()
         )
         current = response.get("values", [[]])
@@ -161,7 +162,7 @@ class GoogleSheetsClient:
         logger.info("Writing Google Sheets header tab=%s", title)
         self.service.spreadsheets().values().clear(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{title}'!A1:Z1",
+            range=header_range,
             body={},
         ).execute()
         self.service.spreadsheets().values().update(
@@ -170,3 +171,14 @@ class GoogleSheetsClient:
             valueInputOption="RAW",
             body={"values": [headers]},
         ).execute()
+
+
+def _column_letter(column_count: int) -> str:
+    if column_count < 1:
+        raise ValueError("column_count must be positive")
+    letters = ""
+    value = column_count
+    while value:
+        value, remainder = divmod(value - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
