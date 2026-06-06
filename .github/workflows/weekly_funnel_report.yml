@@ -1,14 +1,23 @@
-name: Weekly Funnel HTML Report
+name: Weekly GHL Funnel Report
 
 on:
   schedule:
     # GitHub Actions schedules are UTC. This runs at both possible UTC
-    # offsets for 07:00 Europe/Budapest, then the guard keeps only Monday 07:00 locally.
+    # offsets for 07:00 Europe/Budapest; the guard keeps only the active DST offset.
     - cron: "0 5,6 * * 1"
   workflow_dispatch:
+    inputs:
+      week_start:
+        description: "Optional Monday week start in YYYY-MM-DD format. Empty means last completed week."
+        required: false
+        type: string
+      week_end:
+        description: "Optional week end in YYYY-MM-DD format. Empty means week_start + 6 days."
+        required: false
+        type: string
 
 concurrency:
-  group: weekly-funnel-html-report
+  group: weekly-ghl-funnel-report
   cancel-in-progress: false
 
 jobs:
@@ -16,19 +25,26 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: Europe/Budapest
+      WEEK_START: ${{ inputs.week_start }}
+      WEEK_END: ${{ inputs.week_end }}
       GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_PRIVATE_INTEGRATION_TOKEN: ${{ secrets.GHL_PRIVATE_INTEGRATION_TOKEN }}
       GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
       GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
       GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
       GHL_USER_LABELS: ${{ secrets.GHL_USER_LABELS }}
-      GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
-      GA4_CREDENTIALS_PATH: ${{ github.workspace }}/ga4-service-account.json
-      GA4_SERVICE_ACCOUNT_JSON: ${{ secrets.GA4_SERVICE_ACCOUNT_JSON }}
-      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
-      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
-      META_CAMPAIGN_ID: ${{ secrets.META_CAMPAIGN_ID }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/google-service-account.json
+      GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+      GOOGLE_DRIVE_ROOT_FOLDER_NAME: ${{ secrets.GOOGLE_DRIVE_ROOT_FOLDER_NAME }}
+      DRIVE_UPLOAD_AUTH_MODE: oauth
+      GOOGLE_DRIVE_OAUTH_TOKEN_PATH: ${{ github.workspace }}/google-drive-oauth-token.json
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_DRIVE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_DRIVE_OAUTH_TOKEN_JSON }}
       RCLONE_CONFIG_ONEDRIVE: ${{ secrets.RCLONE_CONFIG_ONEDRIVE }}
       ONEDRIVE_UPLOAD_ROOT_PATH: ${{ secrets.ONEDRIVE_UPLOAD_ROOT_PATH }}
+      REPORT_HISTORY_ENABLED: "true"
+      REPORT_DRIVE_UPLOAD_ENABLED: "true"
+      REPORT_STORAGE_STRICT: "true"
       REPORT_DATA_STRICT: "true"
     steps:
       - name: Budapest Monday 07:00 guard
@@ -58,14 +74,12 @@ jobs:
         run: |
           missing=0
           for name in \
-            GHL_API_KEY \
             GHL_LOCATION_ID \
             GHL_BASE_URL \
-            GA4_PROPERTY_ID \
-            GA4_SERVICE_ACCOUNT_JSON \
-            META_AD_ACCOUNT_ID \
-            META_ACCESS_TOKEN \
-            META_CAMPAIGN_ID
+            GOOGLE_SERVICE_ACCOUNT_JSON \
+            GOOGLE_SHEET_ID \
+            GOOGLE_DRIVE_ROOT_FOLDER_NAME \
+            GOOGLE_DRIVE_OAUTH_TOKEN_JSON
           do
             if [ -z "${!name:-}" ]; then
               echo "::error title=Missing GitHub secret::$name is empty or not configured"
@@ -75,22 +89,38 @@ jobs:
               missing=1
             fi
           done
+          if [ -z "${GHL_API_KEY:-}" ] && [ -z "${GHL_PRIVATE_INTEGRATION_TOKEN:-}" ]; then
+            echo "::error title=Missing GitHub secret::GHL_API_KEY or GHL_PRIVATE_INTEGRATION_TOKEN is required"
+            missing=1
+          fi
           exit "$missing"
-      - name: Write GA4 credentials
+      - name: Write Google credentials
         if: steps.budapest_time.outputs.run_report == 'true'
         run: |
-          printf '%s' "$GA4_SERVICE_ACCOUNT_JSON" > ga4-service-account.json
-          chmod 600 ga4-service-account.json
-          python -m json.tool ga4-service-account.json >/dev/null
-      - name: Run weekly HTML report
-        if: steps.budapest_time.outputs.run_report == 'true'
-        run: python main.py --report-type weekly_compare
-      - name: Verify weekly HTML report files
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_JSON" > google-service-account.json
+          printf '%s' "$GOOGLE_DRIVE_OAUTH_TOKEN_JSON" > google-drive-oauth-token.json
+          chmod 600 google-service-account.json google-drive-oauth-token.json
+          python -m json.tool google-service-account.json >/dev/null
+          python -m json.tool google-drive-oauth-token.json >/dev/null
+      - name: Run weekly GHL report
         if: steps.budapest_time.outputs.run_report == 'true'
         run: |
-          test -s weekly_funnel_report.html
-          test -s report_run.log
-      - name: Upload weekly HTML report to OneDrive
+          args=()
+          if [ -n "${WEEK_START:-}" ]; then
+            args+=(--week-start "$WEEK_START")
+          fi
+          if [ -n "${WEEK_END:-}" ]; then
+            args+=(--week-end "$WEEK_END")
+          fi
+          python weekly_ghl_report.py "${args[@]}"
+      - name: Verify weekly GHL report files
+        if: steps.budapest_time.outputs.run_report == 'true'
+        run: |
+          test -s weekly_ghl_funnel_report.html
+          test -s weekly_ghl_funnel_report.csv
+          test -s weekly_ghl_ceo_summary.md
+          test -s weekly_report_run.log
+      - name: Upload weekly GHL reports to OneDrive
         if: steps.budapest_time.outputs.run_report == 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
         run: |
           curl -fsSL https://rclone.org/install.sh | sudo bash
@@ -98,13 +128,17 @@ jobs:
           printf '%s' "$RCLONE_CONFIG_ONEDRIVE" > ~/.config/rclone/rclone.conf
           root_path="${ONEDRIVE_UPLOAD_ROOT_PATH:-ROAR/LionCare/riport}"
           rclone mkdir "onedrive:${root_path}/weekly"
-          rclone copy weekly_funnel_report.html "onedrive:${root_path}/weekly"
-      - name: Upload weekly HTML report artifacts
+          rclone copy weekly_ghl_funnel_report.html "onedrive:${root_path}/weekly"
+          rclone copy weekly_ghl_funnel_report.csv "onedrive:${root_path}/weekly"
+          rclone copy weekly_ghl_ceo_summary.md "onedrive:${root_path}/weekly"
+      - name: Upload weekly GHL report artifacts
         if: steps.budapest_time.outputs.run_report == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-funnel-html-report
+          name: weekly-ghl-funnel-report
           if-no-files-found: error
           path: |
-            weekly_funnel_report.html
-            report_run.log
+            weekly_ghl_funnel_report.html
+            weekly_ghl_funnel_report.csv
+            weekly_ghl_ceo_summary.md
+            weekly_report_run.log

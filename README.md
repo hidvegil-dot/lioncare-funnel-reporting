@@ -125,17 +125,25 @@ python main.py --report-type monthly_compare
 
 ## Heti riport automatika
 
-A heti GitHub Actions automatika jelenleg a régi HTML heti riportot készíti. Ez a `main.py --report-type weekly_compare` futtatásból jön, és a fő kimenet:
+A heti GitHub Actions automatika az új GHL/AI vezetői heti riportot készíti:
 
-- `weekly_funnel_report.html`
+- `weekly_ghl_funnel_report.html`
+- `weekly_ghl_funnel_report.csv`
+- `weekly_ghl_ceo_summary.md`
 
-A korábban kiépített új GHL/AI heti vezetői elemzés nem fut automatikusan a heti workflow-ban, mert a heti automatikus outputként csak a régi HTML riport kell.
+A régi típusú HTML heti riport nem GitHub Actionsből fut, hanem helyi eseti riportként. Ez azért külön folyamat, hogy ne kelljen a fő heti automatizmust átállítani, amikor régi HTML kell.
 
-Kézi futtatás a régi HTML heti riporthoz:
+Régi HTML heti riport helyi futtatása:
 
 ```bash
-python main.py --report-type weekly_compare
+./run_legacy_weekly_html_report.sh
 ```
+
+A kimenete:
+
+- `weekly_funnel_report.html`
+- `weekly_funnel_report.csv`
+- `report_run.log`
 
 GitHub Actions:
 
@@ -145,9 +153,9 @@ GitHub Actions:
 
 Ez hétfőnként Budapest idő szerint 07:00-kor fut. Mivel a GitHub Actions cron UTC-ben működik, a workflow `05:00` és `06:00` UTC-kor is indulhat, de a guard az aktuális Europe/Budapest UTC offset alapján csak a helyes nyári vagy téli cron példányt engedi át. A workflow manuálisan is indítható.
 
-## Heti GHL vezetői funnel riport manuális használatra
+## Heti GHL vezetői funnel riport
 
-Az új heti vezetői riport elsődleges forrása közvetlenül a GoHighLevel. Nem a HTML riportból és nem a Google Sheetből fejti vissza az adatokat. A Google Sheet csak historikus mentési cél. Ez jelenleg manuális/igény szerinti riport, nem a heti automatikus output.
+Az új heti vezetői riport elsődleges forrása közvetlenül a GoHighLevel. Nem a HTML riportból és nem a Google Sheetből fejti vissza az adatokat. A Google Sheet csak historikus mentési cél.
 
 Kézi futtatás az utolsó lezárt hétre:
 
