@@ -13,6 +13,9 @@ concurrency:
   group: legacy-weekly-html-report
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   legacy-weekly-html:
     runs-on: ubuntu-latest
@@ -67,6 +70,17 @@ jobs:
           test -s weekly_funnel_report.html
           test -s weekly_funnel_report.csv
           test -s report_run.log
+      - name: Commit generated legacy weekly report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weekly_funnel_report.html weekly_funnel_report.csv
+          if git diff --cached --quiet; then
+            echo "No report changes to commit."
+          else
+            git commit -m "Update legacy weekly HTML report"
+            git push
+          fi
       - name: Upload legacy weekly HTML artifacts
         uses: actions/upload-artifact@v4
         with:
