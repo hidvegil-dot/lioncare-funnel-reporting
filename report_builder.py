@@ -67,6 +67,12 @@ BRAND_TEXT = colors.HexColor("#243447")
 BRAND_MUTED = colors.HexColor("#6B7280")
 PDF_FONT_NAME = "ArialUnicode"
 PDF_FONT_BOLD_NAME = "ArialUnicodeBold"
+PDF_FONT_CANDIDATES = [
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+]
 
 PDF_COMPARISON_METRICS = [
     "new_leads",
@@ -1596,10 +1602,16 @@ def _pdf_colored_paragraph(text: str, color: str, alignment: int = 2) -> Paragra
 
 
 def _register_pdf_fonts() -> None:
+    font_path = next((path for path in PDF_FONT_CANDIDATES if os.path.exists(path)), None)
+    if font_path is None:
+        raise FileNotFoundError(
+            "No usable TrueType font found for PDF generation. "
+            f"Checked: {', '.join(PDF_FONT_CANDIDATES)}"
+        )
     if PDF_FONT_NAME not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(TTFont(PDF_FONT_NAME, "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"))
+        pdfmetrics.registerFont(TTFont(PDF_FONT_NAME, font_path))
     if PDF_FONT_BOLD_NAME not in pdfmetrics.getRegisteredFontNames():
-        pdfmetrics.registerFont(TTFont(PDF_FONT_BOLD_NAME, "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"))
+        pdfmetrics.registerFont(TTFont(PDF_FONT_BOLD_NAME, font_path))
 
 
 def _build_funnel_strip(summary: dict[str, Any]) -> list[Any]:
