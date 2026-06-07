@@ -8,6 +8,7 @@ from ghl_client import GHLClient
 from google_sheets_client import _column_letter
 from parser import DAILY_REPORT_INDEX_COLUMNS, build_historical_rows
 from report_builder import _evaluate_meta_adset, build_daily_decision_report
+from scripts.check_daily_report_index import _daily_report_exists
 from scripts import monitor_github_actions
 
 
@@ -110,6 +111,29 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertEqual("https://drive/csv", index_row["report_csv_link"])
         self.assertEqual("landing", index_row["funnel_type"])
         self.assertEqual(13, index_row["ghl_leads"])
+
+    def test_daily_report_index_check_requires_drive_links(self) -> None:
+        values = [
+            ["date", "report_html_link", "report_csv_link"],
+            ["2026-06-06", "https://drive/html", "https://drive/csv"],
+        ]
+
+        exists, reason, row = _daily_report_exists(values=values, report_date="2026-06-06")
+
+        self.assertTrue(exists)
+        self.assertEqual("daily_report_index row has Drive links", reason)
+        self.assertEqual("https://drive/html", row["report_html_link"])
+
+    def test_daily_report_index_check_treats_empty_links_as_missing(self) -> None:
+        values = [
+            ["date", "report_html_link", "report_csv_link"],
+            ["2026-06-06", "", "https://drive/csv"],
+        ]
+
+        exists, reason, _ = _daily_report_exists(values=values, report_date="2026-06-06")
+
+        self.assertFalse(exists)
+        self.assertEqual("daily_report_index row has empty report_html_link", reason)
 
     def test_daily_workflow_fails_inactive_schedule_guard(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/daily_funnel_report.yml").read_text(encoding="utf-8")
