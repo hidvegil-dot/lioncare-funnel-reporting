@@ -7,9 +7,9 @@ on:
     # local window because GitHub scheduled runs can start late.
     - cron: "59 3 * * *"
     - cron: "59 4 * * *"
-    # Temporary one-off test: 2026-06-08 11:30 Europe/Budapest = 09:30 UTC.
+    # Temporary one-off test: 2026-06-08 19:30 Europe/Budapest = 17:30 UTC.
     # Remove after the test run.
-    - cron: "30 9 * * *"
+    - cron: "30 17 * * *"
   workflow_dispatch:
     inputs:
       report_date:
@@ -64,7 +64,7 @@ jobs:
             expected_schedule="59 4 * * *"
           fi
           local_date="$(TZ=Europe/Budapest date +%F)"
-          test_schedule="30 9 * * *"
+          test_schedule="30 17 * * *"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
              { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; } || \
              { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$test_schedule" ] && [ "$local_date" = "2026-06-08" ]; }; then
@@ -72,11 +72,10 @@ jobs:
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Fail inactive schedule guard
+      - name: Skip inactive schedule guard
         if: steps.budapest_time.outputs.run_report != 'true'
         run: |
-          echo "::error title=Inactive daily schedule::This scheduled run is not the active Europe/Budapest 05:59 UTC offset. Failing intentionally so skipped report runs are not silent green successes."
-          exit 1
+          echo "::notice title=Inactive daily schedule::This scheduled run is not the active Europe/Budapest report schedule. Skipping cleanly; watchdog/monitor validates missing reports."
       - uses: actions/checkout@v4
         if: steps.budapest_time.outputs.run_report == 'true'
       - uses: actions/setup-python@v5
