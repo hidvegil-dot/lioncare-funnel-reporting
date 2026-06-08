@@ -7,9 +7,9 @@ on:
     # local window because GitHub scheduled runs can start late.
     - cron: "59 3 * * *"
     - cron: "59 4 * * *"
-    # Temporary one-off test: 2026-06-08 19:30 Europe/Budapest = 17:30 UTC.
+    # Temporary one-off test: 2026-06-08 20:35 Europe/Budapest = 18:35 UTC.
     # Remove after the test run.
-    - cron: "30 17 * * *"
+    - cron: "35 18 * * *"
   workflow_dispatch:
     inputs:
       report_date:
@@ -64,7 +64,7 @@ jobs:
             expected_schedule="59 4 * * *"
           fi
           local_date="$(TZ=Europe/Budapest date +%F)"
-          test_schedule="30 17 * * *"
+          test_schedule="35 18 * * *"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
              { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; } || \
              { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$test_schedule" ] && [ "$local_date" = "2026-06-08" ]; }; then
