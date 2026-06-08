@@ -3,7 +3,8 @@ name: Fireflies Client Communication AI
 on:
   schedule:
     # 07:00 Europe/Budapest. GitHub Actions uses UTC; these two UTC hours cover CET/CEST.
-    - cron: "0 5,6 * * *"
+    - cron: "0 5 * * *"
+    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       lookback_hours:

@@ -135,11 +135,12 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertFalse(exists)
         self.assertEqual("daily_report_index row has empty report_html_link", reason)
 
-    def test_daily_workflow_fails_inactive_schedule_guard(self) -> None:
+    def test_daily_workflow_skips_inactive_schedule_guard(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/daily_funnel_report.yml").read_text(encoding="utf-8")
 
-        self.assertIn("Fail inactive schedule guard", workflow)
-        self.assertIn("exit 1", workflow)
+        self.assertIn("Skip inactive schedule guard", workflow)
+        self.assertIn("::notice title=Inactive daily schedule::", workflow)
+        self.assertNotIn("Fail inactive schedule guard", workflow)
         self.assertIn("steps.budapest_time.outputs.run_report != 'true'", workflow)
 
     def test_monitor_ignores_explicit_inactive_guard_run(self) -> None:
@@ -169,6 +170,41 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                 warnings=warnings,
                 runs=[
                     {"id": 1, "event": "schedule", "status": "completed", "conclusion": "failure"},
+                    {"id": 2, "event": "workflow_dispatch", "status": "completed", "conclusion": "success"},
+                ],
+            )
+        finally:
+            monitor_github_actions._github_json = original
+
+        self.assertEqual(2, selected["id"])
+        self.assertTrue(any("inactive schedule guard" in warning for warning in warnings))
+
+    def test_monitor_ignores_clean_inactive_guard_run(self) -> None:
+        def fake_github_json(*, repo: str, token: str, path: str) -> dict:
+            if path.endswith("/runs/1/jobs?per_page=100"):
+                return {
+                    "jobs": [
+                        {
+                            "steps": [
+                                {"name": "Budapest Monday 07:00 guard", "conclusion": "success"},
+                                {"name": "Run weekly GHL report", "conclusion": "skipped"},
+                            ]
+                        }
+                    ]
+                }
+            raise AssertionError(path)
+
+        original = monitor_github_actions._github_json
+        monitor_github_actions._github_json = fake_github_json
+        try:
+            warnings: list[str] = []
+            selected = monitor_github_actions._latest_meaningful_run(
+                repo="repo/name",
+                token="",
+                check=monitor_github_actions.CHECKS[1],
+                warnings=warnings,
+                runs=[
+                    {"id": 1, "event": "schedule", "status": "completed", "conclusion": "success"},
                     {"id": 2, "event": "workflow_dispatch", "status": "completed", "conclusion": "success"},
                 ],
             )

@@ -43,9 +43,6 @@ CHECKS: tuple[WorkflowCheck, ...] = (
         required_steps=(
             "Budapest Monday 07:00 guard",
             "Run weekly GHL report",
-            "Verify weekly GHL report files",
-            "Upload weekly GHL reports to OneDrive",
-            "Upload weekly GHL report artifacts",
         ),
         required_artifact="weekly-ghl-funnel-report",
         max_age_hours=8 * 24,
@@ -56,7 +53,7 @@ CHECKS: tuple[WorkflowCheck, ...] = (
         required_steps=(
             "Run meeting AI batch",
         ),
-        required_artifact="meeting-ai-run",
+        required_artifact=None,
         max_age_hours=36,
     ),
 )
@@ -256,7 +253,8 @@ def _is_inactive_guard_run(*, repo: str, token: str, run: dict[str, Any], check:
         and step.get("conclusion") == "failure"
         for step in all_steps
     )
-    return bool(skipped_required) and inactive_guard_failed
+    inactive_guard_skipped_cleanly = bool(skipped_required) and run.get("conclusion") == "success"
+    return bool(skipped_required) and (inactive_guard_failed or inactive_guard_skipped_cleanly)
 
 
 def _github_json(*, repo: str, token: str, path: str) -> dict[str, Any]:

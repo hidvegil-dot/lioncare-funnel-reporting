@@ -4,7 +4,8 @@ on:
   schedule:
     # GitHub Actions schedules are UTC. This runs at both possible UTC
     # offsets for 07:00 Europe/Budapest; the guard keeps only the active DST offset.
-    - cron: "0 5,6 * * 1"
+    - cron: "0 5 * * 1"
+    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       week_start:
