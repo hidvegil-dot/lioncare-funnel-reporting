@@ -4,7 +4,8 @@ on:
   schedule:
     # GitHub Actions schedules are UTC. These are the two possible UTC
     # offsets for 06:30 Europe/Budapest; the guard below keeps only one active.
-    - cron: "30 4,5 * * *"
+    - cron: "30 4 * * *"
+    - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
       report_date:
