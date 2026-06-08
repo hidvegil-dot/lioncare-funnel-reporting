@@ -33,7 +33,7 @@
     }
 
     .page {
-      width: 1120px;
+      width: min(1120px, calc(100% - 24px));
       margin: 16px auto;
       background: var(--surface);
       border: 1px solid rgba(201, 165, 90, 0.18);
@@ -47,6 +47,7 @@
       gap: 20px;
       padding-bottom: 20px;
       border-bottom: 2px solid var(--line);
+      min-width: 0;
     }
 
     .header-mark {
@@ -103,6 +104,7 @@
       justify-content: space-between;
       gap: 16px;
       margin-bottom: 10px;
+      min-width: 0;
     }
 
     .section-header p,
@@ -144,7 +146,7 @@
 
     .funnel-strip {
       display: grid;
-      grid-template-columns: repeat(8, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
       gap: 10px;
     }
 
@@ -185,13 +187,13 @@
     .learning-grid,
     .diagnosis-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
     }
 
     .cost-grid {
       display: grid;
-      grid-template-columns: 1.1fr 1.1fr 1fr 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 12px;
     }
 
@@ -316,15 +318,18 @@
     .table-shell {
       border: 1px solid var(--line);
       border-radius: 14px;
-      overflow: hidden;
+      overflow-x: auto;
+      overflow-y: hidden;
       background: var(--surface);
       box-shadow: 0 8px 24px rgba(20, 48, 77, 0.05);
+      -webkit-overflow-scrolling: touch;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      table-layout: fixed;
+      table-layout: auto;
+      min-width: 760px;
     }
 
     thead { background: #f3ecde; }
@@ -347,7 +352,7 @@
       border-bottom: 1px solid #ece6db;
       color: var(--ink);
       vertical-align: middle;
-      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     tbody tr:nth-child(even) { background: var(--surface-soft); }
@@ -355,24 +360,27 @@
 
     .adset-table {
       table-layout: fixed;
+      min-width: 1080px;
     }
 
     .adset-table th:nth-child(1),
-    .adset-table td:nth-child(1) { width: 26%; }
+    .adset-table td:nth-child(1) { width: 20%; }
     .adset-table th:nth-child(2),
-    .adset-table td:nth-child(2) { width: 19%; }
+    .adset-table td:nth-child(2) { width: 11%; }
     .adset-table th:nth-child(3),
-    .adset-table td:nth-child(3) { width: 10%; }
+    .adset-table td:nth-child(3) { width: 12%; }
     .adset-table th:nth-child(4),
-    .adset-table td:nth-child(4) { width: 10%; }
+    .adset-table td:nth-child(4) { width: 9%; }
     .adset-table th:nth-child(5),
-    .adset-table td:nth-child(5) { width: 10%; }
+    .adset-table td:nth-child(5) { width: 9%; }
     .adset-table th:nth-child(6),
     .adset-table td:nth-child(6) { width: 9%; }
     .adset-table th:nth-child(7),
-    .adset-table td:nth-child(7) { width: 10%; }
+    .adset-table td:nth-child(7) { width: 8%; }
     .adset-table th:nth-child(8),
-    .adset-table td:nth-child(8) { width: 16%; }
+    .adset-table td:nth-child(8) { width: 10%; }
+    .adset-table th:nth-child(9),
+    .adset-table td:nth-child(9) { width: 12%; }
 
     .decision-pill,
     .status {
@@ -431,6 +439,18 @@
       .section { break-inside: avoid; }
       .table-shell { box-shadow: none; }
       .decision-pill { font-size: 10px; padding: 5px 8px; }
+    }
+
+    @media (max-width: 720px) {
+      .page { padding: 16px 14px 18px; }
+      .header { align-items: flex-start; gap: 12px; }
+      .header-mark { width: 56px; height: 56px; flex-basis: 56px; border-radius: 12px; }
+      h1 { font-size: 26px; }
+      h2 { font-size: 19px; }
+      .insight-text { font-size: 17px; }
+      .cost-value { font-size: 28px; }
+      .section-header { display: block; }
+      th, td { padding: 10px 11px; }
     }
   </style>
 </head>
