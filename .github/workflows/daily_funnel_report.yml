@@ -7,6 +7,9 @@ on:
     # local window because GitHub scheduled runs can start late.
     - cron: "59 3 * * *"
     - cron: "59 4 * * *"
+    # Temporary one-off test: 2026-06-08 10:30 Europe/Budapest = 08:30 UTC.
+    # Remove after the test run.
+    - cron: "30 8 * * *"
   workflow_dispatch:
     inputs:
       report_date:
@@ -60,7 +63,11 @@ jobs:
           else
             expected_schedule="59 4 * * *"
           fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; }; then
+          local_date="$(TZ=Europe/Budapest date +%F)"
+          test_schedule="30 8 * * *"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
+             { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; } || \
+             { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$test_schedule" ] && [ "$local_date" = "2026-06-08" ]; }; then
             echo "run_report=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"
