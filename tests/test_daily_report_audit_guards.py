@@ -150,7 +150,7 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                     "jobs": [
                         {
                             "steps": [
-                                {"name": "Budapest 05:59 guard", "conclusion": "success"},
+                                {"name": "Budapest 06:30 guard", "conclusion": "success"},
                                 {"name": "Fail inactive schedule guard", "conclusion": "failure"},
                                 {"name": "Run daily report", "conclusion": "skipped"},
                             ]

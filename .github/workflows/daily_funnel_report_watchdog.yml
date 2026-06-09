@@ -3,9 +3,9 @@ name: Daily Funnel Report Watchdog
 on:
   schedule:
     # GitHub Actions schedules are UTC. These are the two possible UTC
-    # offsets for 06:30 Europe/Budapest; the guard below keeps only one active.
-    - cron: "30 4 * * *"
-    - cron: "30 5 * * *"
+    # offsets for 06:45 Europe/Budapest; the guard below keeps only one active.
+    - cron: "45 4 * * *"
+    - cron: "45 5 * * *"
   workflow_dispatch:
     inputs:
       report_date:
@@ -50,14 +50,14 @@ jobs:
       REPORT_STORAGE_STRICT: "true"
       REPORT_DATA_STRICT: "true"
     steps:
-      - name: Budapest 06:30 guard
+      - name: Budapest 06:45 guard
         id: budapest_time
         run: |
           local_offset="$(TZ=Europe/Budapest date +%z)"
           if [ "$local_offset" = "+0200" ]; then
-            expected_schedule="30 4 * * *"
+            expected_schedule="45 4 * * *"
           else
-            expected_schedule="30 5 * * *"
+            expected_schedule="45 5 * * *"
           fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; }; then
             echo "run_watchdog=true" >> "$GITHUB_OUTPUT"

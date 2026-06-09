@@ -3,13 +3,10 @@ name: Daily Funnel Report
 on:
   schedule:
     # GitHub Actions schedules are UTC. This runs at both possible UTC
-    # offsets for 05:59 Europe/Budapest. The guard below allows a wider
+    # offsets for 06:30 Europe/Budapest. The guard below allows a wider
     # local window because GitHub scheduled runs can start late.
-    - cron: "59 3 * * *"
-    - cron: "59 4 * * *"
-    # Temporary one-off test: 2026-06-08 20:35 Europe/Budapest = 18:35 UTC.
-    # Remove after the test run.
-    - cron: "35 18 * * *"
+    - cron: "30 4 * * *"
+    - cron: "30 5 * * *"
   workflow_dispatch:
     inputs:
       report_date:
@@ -54,20 +51,17 @@ jobs:
       REPORT_STORAGE_STRICT: "true"
       REPORT_DATA_STRICT: "true"
     steps:
-      - name: Budapest 05:59 guard
+      - name: Budapest 06:30 guard
         id: budapest_time
         run: |
           local_offset="$(TZ=Europe/Budapest date +%z)"
           if [ "$local_offset" = "+0200" ]; then
-            expected_schedule="59 3 * * *"
+            expected_schedule="30 4 * * *"
           else
-            expected_schedule="59 4 * * *"
+            expected_schedule="30 5 * * *"
           fi
-          local_date="$(TZ=Europe/Budapest date +%F)"
-          test_schedule="35 18 * * *"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
-             { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; } || \
-             { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$test_schedule" ] && [ "$local_date" = "2026-06-08" ]; }; then
+             { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; }; then
             echo "run_report=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_report=false" >> "$GITHUB_OUTPUT"

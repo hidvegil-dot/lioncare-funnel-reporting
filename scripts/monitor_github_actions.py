@@ -29,7 +29,7 @@ CHECKS: tuple[WorkflowCheck, ...] = (
         workflow_name="Daily Funnel Report",
         workflow_file="daily_funnel_report.yml",
         required_steps=(
-            "Budapest 05:59 guard",
+            "Budapest 06:30 guard",
             "Run daily report",
             "Upload reports to OneDrive",
             "Upload report artifacts",
