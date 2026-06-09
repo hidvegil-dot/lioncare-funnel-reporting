@@ -142,7 +142,16 @@ def persist_daily_report_history(
                     "GOOGLE_DRIVE_OAUTH_TOKEN_PATH is required when DRIVE_UPLOAD_AUTH_MODE=oauth. "
                     "Run `python scripts/google_drive_oauth_init.py` first."
                 )
-            drive = GoogleDriveClient.from_oauth_token(config.drive_oauth_token_path)
+            try:
+                drive = GoogleDriveClient.from_oauth_token(config.drive_oauth_token_path)
+            except Exception as oauth_exc:
+                logger.warning(
+                    "Google Drive OAuth auth failed; falling back to service account. "
+                    "If this also fails, share the Drive root folder with the service account. "
+                    "OAuth error: %s",
+                    oauth_exc,
+                )
+                drive = GoogleDriveClient(config.credentials_path)
         elif config.drive_upload_auth_mode in {"service_account", "service-account"}:
             drive = GoogleDriveClient(config.credentials_path)
         else:
@@ -275,7 +284,16 @@ def persist_weekly_ai_analysis(
             if config.drive_upload_auth_mode == "oauth":
                 if not config.drive_oauth_token_path:
                     raise ValueError("GOOGLE_DRIVE_OAUTH_TOKEN_PATH is required when DRIVE_UPLOAD_AUTH_MODE=oauth")
-                drive = GoogleDriveClient.from_oauth_token(config.drive_oauth_token_path)
+                try:
+                    drive = GoogleDriveClient.from_oauth_token(config.drive_oauth_token_path)
+                except Exception as oauth_exc:
+                    logger.warning(
+                        "Google Drive OAuth auth failed for weekly upload; falling back to service account. "
+                        "If this also fails, share the Drive root folder with the service account. "
+                        "OAuth error: %s",
+                        oauth_exc,
+                    )
+                    drive = GoogleDriveClient(config.credentials_path)
             else:
                 drive = GoogleDriveClient(config.credentials_path)
             root_folder_id = drive.resolve_root_folder_id(config.drive_root_folder_name)
