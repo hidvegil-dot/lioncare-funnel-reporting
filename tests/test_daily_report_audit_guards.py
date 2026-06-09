@@ -135,6 +135,22 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertFalse(exists)
         self.assertEqual("daily_report_index row has empty report_html_link", reason)
 
+    def test_daily_report_index_check_can_accept_row_without_drive_links(self) -> None:
+        values = [
+            ["date", "report_html_link", "report_csv_link"],
+            ["2026-06-06", "", ""],
+        ]
+
+        exists, reason, row = _daily_report_exists(
+            values=values,
+            report_date="2026-06-06",
+            require_drive_links=False,
+        )
+
+        self.assertTrue(exists)
+        self.assertEqual("daily_report_index row exists; Drive links not required", reason)
+        self.assertEqual("2026-06-06", row["date"])
+
     def test_daily_workflow_skips_inactive_schedule_guard(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/daily_funnel_report.yml").read_text(encoding="utf-8")
 

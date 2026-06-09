@@ -13,6 +13,14 @@ SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
 REQUIRED_COLUMNS = {"date", "report_html_link", "report_csv_link"}
 
 
+def _drive_upload_enabled() -> bool:
+    return os.getenv("REPORT_DRIVE_UPLOAD_ENABLED", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check whether a daily report is indexed in Google Sheets.")
     parser.add_argument("--report-date", required=True, help="Report date in YYYY-MM-DD format.")
@@ -35,7 +43,11 @@ def main() -> int:
         .execute()
         .get("values", [])
     )
-    exists, reason, row = _daily_report_exists(values=values, report_date=report_date)
+    exists, reason, row = _daily_report_exists(
+        values=values,
+        report_date=report_date,
+        require_drive_links=_drive_upload_enabled(),
+    )
     print(f"report_date={report_date}")
     print(f"exists={str(exists).lower()}")
     print(f"reason={reason}")
@@ -60,7 +72,12 @@ def _sheets_service(credentials_path: str) -> Any:
     return build("sheets", "v4", credentials=credentials, cache_discovery=False)
 
 
-def _daily_report_exists(*, values: list[list[Any]], report_date: str) -> tuple[bool, str, dict[str, str]]:
+def _daily_report_exists(
+    *,
+    values: list[list[Any]],
+    report_date: str,
+    require_drive_links: bool = True,
+) -> tuple[bool, str, dict[str, str]]:
     if not values:
         return False, "daily_report_index tab is empty", {}
     header = [str(item) for item in values[0]]
@@ -78,6 +95,8 @@ def _daily_report_exists(*, values: list[list[Any]], report_date: str) -> tuple[
         return False, "no daily_report_index row for report date", {}
 
     latest = rows[-1]
+    if not require_drive_links:
+        return True, "daily_report_index row exists; Drive links not required", latest
     if not latest.get("report_html_link"):
         return False, "daily_report_index row has empty report_html_link", latest
     if not latest.get("report_csv_link"):
