@@ -56,12 +56,37 @@ jobs:
       MEETING_AI_MOCK_OPENAI_ENABLED: ${{ inputs.mock_openai || 'false' }}
       MEETING_AI_FORCE_REPROCESS: ${{ inputs.force_reprocess || 'false' }}
     steps:
+      - name: Budapest 07:00 guard
+        id: budapest_time
+        run: |
+          local_offset="$(TZ=Europe/Budapest date +%z)"
+          local_hour="$(TZ=Europe/Budapest date +%H)"
+          if [ "$local_offset" = "+0200" ]; then
+            expected_schedule="0 5 * * *"
+          else
+            expected_schedule="0 6 * * *"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_meeting_ai=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "$expected_schedule" ] && [ "$local_hour" -ge 7 ] && [ "$local_hour" -le 8 ]; then
+            echo "run_meeting_ai=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_meeting_ai=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Skip inactive or delayed schedule
+        if: steps.budapest_time.outputs.run_meeting_ai != 'true'
+        run: |
+          echo "::notice title=Inactive Fireflies schedule::Skipping delayed or inactive schedule. event=${{ github.event_name }} schedule=${{ github.event.schedule }}"
       - uses: actions/checkout@v4
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true'
       - uses: actions/setup-python@v5
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true'
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true'
       - name: Validate required secrets
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true'
         run: |
           missing=0
           for name in FIREFLIES_API_KEY OPENAI_API_KEY GOOGLE_SHEET_ID; do
@@ -80,6 +105,7 @@ jobs:
           fi
           exit "$missing"
       - name: Write Google credentials
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true'
         run: |
           if [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
             printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > google-service-account.json
@@ -90,35 +116,48 @@ jobs:
           chmod 600 google-service-account.json google-drive-oauth-token.json
           python -m json.tool google-service-account.json >/dev/null
           python -m json.tool google-drive-oauth-token.json >/dev/null
-      - name: Run meeting AI batch
+      - name: Check Google Drive OAuth token
+        id: drive_oauth
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true'
         run: |
-          local_offset="$(TZ=Europe/Budapest date +%z)"
-          if [ "$local_offset" = "+0200" ]; then
-            expected_schedule="0 5 * * *"
-          else
-            expected_schedule="0 6 * * *"
-          fi
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" != "$expected_schedule" ]; then
-            echo "Skipping duplicate UTC schedule outside Budapest 07:00. schedule=${{ github.event.schedule }} expected=${expected_schedule}"
-            exit 0
-          fi
+          python - <<'PY'
+          import os
+          import sys
+          from google.auth.exceptions import RefreshError
+          from google_drive_client import GoogleDriveClient
+
+          github_output = os.environ["GITHUB_OUTPUT"]
+          try:
+              GoogleDriveClient.from_oauth_token("google-drive-oauth-token.json")
+          except RefreshError as exc:
+              print(f"::warning title=Expired Google Drive OAuth token::{exc}")
+              with open(github_output, "a", encoding="utf-8") as output:
+                  output.write("valid=false\n")
+              sys.exit(0)
+          except Exception as exc:
+              print(f"::warning title=Invalid Google Drive OAuth token::{exc}")
+              with open(github_output, "a", encoding="utf-8") as output:
+                  output.write("valid=false\n")
+              sys.exit(0)
+          else:
+              with open(github_output, "a", encoding="utf-8") as output:
+                  output.write("valid=true\n")
+          PY
+      - name: Skip Meeting AI until Drive OAuth is renewed
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true' && steps.drive_oauth.outputs.valid != 'true'
+        run: |
+          echo "::notice title=Meeting AI skipped::Google Drive OAuth token is expired or revoked. Renew GOOGLE_DRIVE_OAUTH_TOKEN_JSON, then run this workflow manually."
+      - name: Run meeting AI batch
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true' && steps.drive_oauth.outputs.valid == 'true'
+        run: |
           python run_fireflies_meeting_ai.py \
             --lookback-hours "${{ inputs.lookback_hours || '24' }}"
       - name: Verify meeting AI log
-        if: always()
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true' && steps.drive_oauth.outputs.valid == 'true'
         run: |
-          local_offset="$(TZ=Europe/Budapest date +%z)"
-          if [ "$local_offset" = "+0200" ]; then
-            expected_schedule="0 5 * * *"
-          else
-            expected_schedule="0 6 * * *"
-          fi
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" != "$expected_schedule" ]; then
-            exit 0
-          fi
           test -s meeting_ai_run.log
       - name: Upload meeting AI logs
-        if: always()
+        if: steps.budapest_time.outputs.run_meeting_ai == 'true' && steps.drive_oauth.outputs.valid == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
           name: meeting-ai-run
