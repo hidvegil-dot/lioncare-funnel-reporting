@@ -60,7 +60,6 @@ jobs:
         id: budapest_time
         run: |
           local_offset="$(TZ=Europe/Budapest date +%z)"
-          local_hour="$(TZ=Europe/Budapest date +%H)"
           if [ "$local_offset" = "+0200" ]; then
             expected_schedule="0 5 * * *"
           else
@@ -68,7 +67,7 @@ jobs:
           fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run_meeting_ai=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "$expected_schedule" ] && [ "$local_hour" -ge 7 ] && [ "$local_hour" -le 8 ]; then
+          elif [ "${{ github.event.schedule }}" = "$expected_schedule" ]; then
             echo "run_meeting_ai=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_meeting_ai=false" >> "$GITHUB_OUTPUT"
