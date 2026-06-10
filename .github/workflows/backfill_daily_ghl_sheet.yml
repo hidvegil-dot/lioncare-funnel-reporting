@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: Europe/Budapest
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       START_DATE: ${{ inputs.start_date }}
       END_DATE: ${{ inputs.end_date }}
       GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
