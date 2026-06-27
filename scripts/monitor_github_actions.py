@@ -47,15 +47,6 @@ CHECKS: tuple[WorkflowCheck, ...] = (
         required_artifact="weekly-ghl-funnel-report",
         max_age_hours=8 * 24,
     ),
-    WorkflowCheck(
-        workflow_name="Fireflies Client Communication AI",
-        workflow_file="fireflies_client_communication_ai.yml",
-        required_steps=(
-            "Run meeting AI batch",
-        ),
-        required_artifact=None,
-        max_age_hours=36,
-    ),
 )
 
 

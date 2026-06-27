@@ -58,44 +58,25 @@ Ha ezek be vannak állítva, a napi HTML riport egy külön GA4 Summary és GA4 
 Ha ezek be vannak állítva, a napi és heti HTML riport Meta Ads összesítő blokkot is tartalmaz.
 Ez jelenleg a spend, impressions, clicks, landing page views és leads számokat húzza be, valamint heti nézetben ad set bontást is mutat.
 
-5. Opcionális Fireflies API kapcsolat meeting transcript lekéréshez:
-
-- `FIREFLIES_API_KEY=...`
-- opcionálisan: `FIREFLIES_GRAPHQL_URL=https://api.fireflies.ai/graphql`
-
-Gyors ellenőrzés az utolsó 5 transcript listázására:
-
-```bash
-python fireflies_client.py list --limit 5
-```
-
-Egy konkrét transcript lekérése:
-
-```bash
-python fireflies_client.py get TRANSCRIPT_ID
-```
-
-A Fireflies API GraphQL-alapú, és Bearer API key hitelesítést használ. A kliens csak olvasó lekérdezéseket végez: transcript lista és transcript részletek / summary / mondatok.
-
-6. FuttatÃ¡s alapÃ©rtelmezett, elmÃºlt 30 napos idÅszakkal:
+5. FuttatÃ¡s alapÃ©rtelmezett, elmÃºlt 30 napos idÅszakkal:
 
 ```bash
 python main.py
 ```
 
-7. FuttatÃ¡s egyedi dÃ¡tumtartomÃ¡nnyal:
+6. FuttatÃ¡s egyedi dÃ¡tumtartomÃ¡nnyal:
 
 ```bash
 python main.py --start-date 2026-03-01 --end-date 2026-03-31
 ```
 
-8. HÃ©tfÅi heti Ã¶sszehasonlÃ­tÃ³ riport az aktuális riporthetet a megelőző 7 nappal összehasonlítva:
+7. HÃ©tfÅi heti Ã¶sszehasonlÃ­tÃ³ riport az aktuális riporthetet a megelőző 7 nappal összehasonlítva:
 
 ```bash
 python main.py --report-type weekly_compare
 ```
 
-9. Havi Ã¶sszehasonlÃ­tÃ³ riport az utolsÃ³ lezÃ¡rt Ã¼zleti hÃ³napra, Ã¶sszevetve az azt megelÅzÅ Ã¼zleti hÃ³nappal.
+8. Havi Ã¶sszehasonlÃ­tÃ³ riport az utolsÃ³ lezÃ¡rt Ã¼zleti hÃ³napra, Ã¶sszevetve az azt megelÅzÅ Ã¼zleti hÃ³nappal.
 Az Ã¼zleti hÃ³nap itt 15-tÅl a kÃ¶vetkezÅ hÃ³nap 14-ig tart.
 
 ```bash
@@ -356,96 +337,13 @@ GitHub Actions példa is van itt:
 .github/workflows/daily_funnel_report.yml
 ```
 
-## LionCare Meeting AI
-
-A Meeting AI háromrétegű ügyfélkommunikációs rendszer:
-
-1. Google Drive = memória
-2. OpenAI API = automata feldolgozás
-3. ChatGPT asszisztens = későbbi stratégiai gondolkodás és manuális elemzés
-
-Az első verzió egyetlen tanácsadó meetingjeire fókuszál. Nem ír automatikusan GHL-be, nem küld e-mailt, és nem hoz létre taskot. A Fireflies átiratokból automatikusan elkészíti:
-
-- GHL-be másolható CRM note
-- ügyfélre szabott follow-up e-mail vázlat
-- következő lépés javaslat
-- zárási esély és hot/red flag értékelés
-- belső kommunikációs diagnózis
-- rövid vezetői összefoglaló
-
-Adatáramlás:
-
-```text
-Fireflies transcript
--> GitHub Actions / Python batch
--> OpenAI API ügyfélkommunikációs prompt
--> Google Drive markdown memória
--> Google Sheet meeting_ai_log index
--> később ChatGPT asszisztens Drive-ból visszakeres
-```
-
-GitHub Actions workflow:
-
-- `.github/workflows/fireflies_client_communication_ai.yml`
-- napi futás: 07:00 Europe/Budapest
-- manuális futtatás: GitHub Actions / Fireflies Client Communication AI / Run workflow
-
-Szükséges GitHub Secrets:
-
-- `FIREFLIES_API_KEY`
-- `OPENAI_API_KEY`
-- `GOOGLE_SHEET_ID`
-- `GOOGLE_APPLICATION_CREDENTIALS_JSON` vagy meglévő `GOOGLE_SERVICE_ACCOUNT_JSON`
-- `GOOGLE_DRIVE_OAUTH_TOKEN_JSON`
-- opcionális: `OPENAI_MODEL`
-- opcionális: `GOOGLE_DRIVE_ROOT_FOLDER_NAME`, alapértelmezés: `LionCare`
-
-Előkészített, de az első verzióban nem író GHL kapcsolók:
-
-- `GHL_WRITE_NOTES_ENABLED=false`
-- `GHL_CREATE_TASKS_ENABLED=false`
-- `EMAIL_DRAFT_ENABLED=false`
-- `RAW_TRANSCRIPT_SAVE_ENABLED=true`
-
-Google Drive memória struktúra:
-
-```text
-LionCare/
-└── meeting_ai/
-    └── Meet/
-        └── YYYY-MM-DD_client-name_fireflies-id/
-            ├── transcript.md
-            ├── crm-note.md
-            ├── followup.md
-            ├── diagnosis.md
-            └── summary.md
-```
-
-Meeting mappa logika:
-
-```text
-LionCare/meeting_ai/Meet/YYYY-MM-DD_client-name_fireflies-id/
-```
-
-Google Sheet index tab:
-
-- `meeting_ai_log`
-
-A Sheet csak indexet tárol: meeting metaadat, fontos KPI-k, Drive linkek, státusz, hibaüzenet. A teljes transcript és AI elemzés nem kerül Sheetbe.
-
-Kézi teszt lokálisan:
-
-```bash
-python run_fireflies_meeting_ai.py --lookback-hours 24 --limit 5
-```
-
-Automatizmus audit lokálisan:
+## Automatizmus audit
 
 ```bash
 python scripts/audit_lioncare_automation.py
 ```
 
-Ez read-only ellenőrzést futtat a Google Drive és Google Sheet struktúrán: meeting mappák kötelező fájljai, `meeting_ai_log` duplikációk, kötelező Sheet tabok és kulcsoszlopok. Hibánál nem javít csendben, hanem nem nulla exit kóddal áll meg.
+Ez read-only ellenőrzést futtat a Google Drive és Google Sheet struktúrán: napi riport mappák, kötelező Sheet tabok és kulcsoszlopok. Hibánál nem javít csendben, hanem nem nulla exit kóddal áll meg.
 
 GitHub Actions futásmonitor lokálisan:
 
@@ -454,22 +352,6 @@ python scripts/monitor_github_actions.py
 ```
 
 Ez nem csak a workflow zöld státuszát ellenőrzi, hanem a kulcslépéseket, a `skipped` állapotot és a kötelező artifactokat is. A felhőben a `.github/workflows/github_actions_monitor.yml` futtatja naponta, a reggeli automatizmusok után.
-
-OpenAI API keret nélkül a teljes Drive/Sheet csővezeték tesztelhető mock módban:
-
-```bash
-MEETING_AI_MOCK_OPENAI_ENABLED=true python run_fireflies_meeting_ai.py --lookback-hours 24 --limit 5
-```
-
-GitHub Actions kézi futtatásnál ugyanennek a kapcsolója: `mock_openai=true`. Ez csak technikai tesztre való; az így készült outputok `NEEDS_REVIEW` jelölést kapnak és nem tekinthetők valódi ügyfélkommunikációs elemzésnek.
-
-Ha egy meetinget javított prompttal újra kell generálni, kézi GitHub Actions futtatásnál állítsd:
-
-```text
-force_reprocess=true
-```
-
-Hosszú transcript esetén a rendszer először strukturált kivonatot készít, és abból generálja az outputokat, hogy ne küldje ugyanazt a teljes átiratot több külön OpenAI hívásban.
 
 Fontos: a GitHub Actions cron UTC-ben fut. A napi workflow `03:59` és `04:59` UTC-kor is elindul, hogy téli és nyári időszámításban is lefedje a Budapest-idő szerinti 05:59-et. A guard step nem az aktuális órát nézi, mert a GitHub scheduled runok jelentősen késhetnek, hanem az aktuális Europe/Budapest UTC offset alapján csak a helyes nyári vagy téli cron példányt engedi át. A napi mentés idempotens: ugyanarra a riportdátumra a Google Sheet sort cseréli, a Drive/OneDrive fájlokat pedig ugyanarra a névre írja.
 
