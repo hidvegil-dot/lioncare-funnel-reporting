@@ -2,10 +2,16 @@ name: Daily Funnel Report Watchdog
 
 on:
   schedule:
-    # GitHub Actions schedules are UTC. These are the two possible UTC
-    # offsets for 06:45 Europe/Budapest; the guard below keeps only one active.
+    # GitHub Actions scheduled runs can be delayed or occasionally missed.
+    # The watchdog is idempotent: it checks the Google Sheet first and only
+    # generates the daily report when the target date is still missing.
     - cron: "45 4 * * *"
     - cron: "45 5 * * *"
+    - cron: "45 6 * * *"
+    - cron: "45 7 * * *"
+    - cron: "45 8 * * *"
+    - cron: "45 9 * * *"
+    - cron: "45 10 * * *"
   workflow_dispatch:
     inputs:
       report_date:
@@ -51,21 +57,11 @@ jobs:
       REPORT_STORAGE_STRICT: "true"
       REPORT_DATA_STRICT: "true"
     steps:
-      - name: Budapest 06:45 guard
+      - name: Enable watchdog run
         id: budapest_time
         run: |
-          local_offset="$(TZ=Europe/Budapest date +%z)"
-          if [ "$local_offset" = "+0200" ]; then
-            expected_schedule="45 4 * * *"
-          else
-            expected_schedule="45 5 * * *"
-          fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "$expected_schedule" ]; }; then
-            echo "run_watchdog=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run_watchdog=false" >> "$GITHUB_OUTPUT"
-            echo "Inactive Europe/Budapest offset schedule; no watchdog work needed."
-          fi
+          echo "run_watchdog=true" >> "$GITHUB_OUTPUT"
+          echo "Watchdog enabled for event=${{ github.event_name }} schedule=${{ github.event.schedule }}"
       - uses: actions/checkout@v4
         if: steps.budapest_time.outputs.run_watchdog == 'true'
       - uses: actions/setup-python@v5
