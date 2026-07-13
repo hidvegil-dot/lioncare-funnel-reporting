@@ -1,0 +1,81 @@
+name: Recover GHL Webinar Contact
+
+on:
+  workflow_dispatch:
+    inputs:
+      first_name:
+        description: "Contact first name"
+        required: true
+        type: string
+      last_name:
+        description: "Contact last name"
+        required: true
+        type: string
+      email:
+        description: "Contact email"
+        required: true
+        type: string
+      phone:
+        description: "Contact phone in international format"
+        required: true
+        type: string
+      lead_date:
+        description: "Lead date in YYYY-MM-DD format"
+        required: true
+        type: string
+      source:
+        description: "GHL source"
+        required: false
+        default: "Meta Lead Ads - Webinar manual recovery"
+        type: string
+      tags:
+        description: "Optional comma-separated tags"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  recover-contact:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      REPORT_DATA_STRICT: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in GHL_API_KEY GHL_LOCATION_ID GHL_BASE_URL
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Recover webinar contact
+        env:
+          FIRST_NAME: ${{ inputs.first_name }}
+          LAST_NAME: ${{ inputs.last_name }}
+          EMAIL: ${{ inputs.email }}
+          PHONE: ${{ inputs.phone }}
+          LEAD_DATE: ${{ inputs.lead_date }}
+          SOURCE: ${{ inputs.source }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          python scripts/recover_ghl_webinar_contact.py \
+            --first-name "$FIRST_NAME" \
+            --last-name "$LAST_NAME" \
+            --email "$EMAIL" \
+            --phone "$PHONE" \
+            --lead-date "$LEAD_DATE" \
+            --source "$SOURCE" \
+            --tags "$TAGS"
