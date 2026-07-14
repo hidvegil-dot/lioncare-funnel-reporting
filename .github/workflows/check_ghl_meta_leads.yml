@@ -1,0 +1,42 @@
+name: Check GHL Meta Leads
+
+on:
+  workflow_dispatch:
+    inputs:
+      leads_json:
+        description: "JSON array of Meta leads to check by email/phone"
+        required: true
+        type: string
+
+jobs:
+  check-leads:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      REPORT_DATA_STRICT: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in GHL_API_KEY GHL_LOCATION_ID GHL_BASE_URL
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Check GHL contacts
+        env:
+          LEADS_JSON: ${{ inputs.leads_json }}
+        run: |
+          python scripts/check_ghl_meta_leads.py --leads-json "$LEADS_JSON"
