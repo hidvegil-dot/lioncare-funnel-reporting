@@ -70,6 +70,8 @@ def update_appointment(
         "appointmentStatus": appointment.get("appointmentStatus") or appointment.get("appoinmentStatus") or "confirmed",
         "assignedUserId": appointment.get("assignedUserId"),
         "address": appointment.get("address"),
+        "ignoreDateRange": True,
+        "ignoreFreeSlotValidation": True,
     }
     payload = {key: value for key, value in payload.items() if value not in (None, "")}
 
@@ -83,6 +85,8 @@ def update_appointment(
             "startTime": new_start,
             "endTime": new_end,
             "appointmentStatus": payload.get("appointmentStatus", "confirmed"),
+            "ignoreDateRange": True,
+            "ignoreFreeSlotValidation": True,
         }
         response = client._request("PUT", f"/calendars/events/appointments/{event_id}", json=minimal_payload)
         payload = minimal_payload
