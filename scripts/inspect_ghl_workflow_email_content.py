@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -63,8 +64,6 @@ def list_workflows(client: GHLClient) -> list[dict[str, Any]]:
 def fetch_workflow_detail(client: GHLClient, workflow_id: str) -> dict[str, Any]:
     attempts = [
         ("GET", f"/workflows/{workflow_id}", {"locationId": client.config.location_id}),
-        ("GET", f"/workflows/{workflow_id}", None),
-        ("GET", f"/locations/{client.config.location_id}/workflows/{workflow_id}", None),
     ]
     errors = []
     for method, path, params in attempts:
@@ -98,7 +97,7 @@ def snippets_for_patterns(value: Any, patterns: tuple[str, ...]) -> list[str]:
 
 
 def inspect() -> dict[str, Any]:
-    client = GHLClient(GHLConfig.from_env())
+    client = GHLClient(replace(GHLConfig.from_env(), request_timeout_seconds=8, max_retries=1))
     workflows = list_workflows(client)
     rows = []
 
