@@ -1,0 +1,57 @@
+name: Recover Meta Leads To GHL Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      leads_json:
+        description: "JSON array of Meta leads"
+        required: true
+        type: string
+      workflow_id:
+        description: "Optional GHL workflow id. Leave empty to auto-select by name."
+        required: false
+        default: ""
+        type: string
+      workflow_name_contains:
+        description: "Optional workflow name filter if workflow_id is empty."
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  recover-leads:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      REPORT_DATA_STRICT: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in GHL_API_KEY GHL_LOCATION_ID GHL_BASE_URL
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Recover contacts and add to workflow
+        env:
+          LEADS_JSON: ${{ inputs.leads_json }}
+          WORKFLOW_ID: ${{ inputs.workflow_id }}
+          WORKFLOW_NAME_CONTAINS: ${{ inputs.workflow_name_contains }}
+        run: |
+          python scripts/recover_meta_leads_to_ghl_workflow.py \
+            --leads-json "$LEADS_JSON" \
+            --workflow-id "$WORKFLOW_ID" \
+            --workflow-name-contains "$WORKFLOW_NAME_CONTAINS"
