@@ -96,9 +96,19 @@ def find_contacts(client: GHLClient, leads: list[dict[str, Any]]) -> list[dict[s
                 "source": contact_value(contact, "source"),
                 "tags": contact.get("tags") or [],
                 "customFields": contact.get("customFields") or contact.get("custom_fields") or [],
+                "appointments": get_contact_appointments(client, contact_value(contact, "id", "contactId")),
             }
         )
     return results
+
+
+def get_contact_appointments(client: GHLClient, contact_id: str) -> list[dict[str, Any]]:
+    if not contact_id:
+        return []
+    try:
+        return client.fetch_contact_appointments(contact_id)
+    except GHLAPIError as exc:
+        return [{"error": str(exc)}]
 
 
 def inspect(leads: list[dict[str, Any]]) -> dict[str, Any]:
