@@ -15,6 +15,21 @@ on:
         options:
           - "false"
           - "true"
+      old_start:
+        description: "Appointment start to replace, as returned by GHL"
+        required: false
+        default: "2026-07-21 18:00:00"
+        type: string
+      new_start:
+        description: "API start time to send. GHL displays this as Budapest time +2h."
+        required: false
+        default: "2026-07-20 16:00:00"
+        type: string
+      new_end:
+        description: "API end time to send. GHL displays this as Budapest time +2h."
+        required: false
+        default: "2026-07-20 17:00:00"
+        type: string
 
 jobs:
   fix-webinar-appointments:
@@ -27,6 +42,9 @@ jobs:
       GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
       REPORT_DATA_STRICT: "true"
       DRY_RUN: ${{ inputs.dry_run || 'false' }}
+      OLD_START: ${{ inputs.old_start || '2026-07-21 18:00:00' }}
+      NEW_START: ${{ inputs.new_start || '2026-07-20 16:00:00' }}
+      NEW_END: ${{ inputs.new_end || '2026-07-20 17:00:00' }}
     steps:
       - name: Stop after webinar time
         id: window
@@ -52,9 +70,9 @@ jobs:
           args=(
             --calendar-id "GOLaB6F3CTDmT19NuvpR"
             --required-tag "webinar_lead"
-            --old-start "2026-07-21 18:00:00"
-            --new-start "2026-07-20 18:00:00"
-            --new-end "2026-07-20 19:00:00"
+            --old-start "$OLD_START"
+            --new-start "$NEW_START"
+            --new-end "$NEW_END"
           )
           if [ "$DRY_RUN" = "true" ]; then
             args+=(--dry-run)
