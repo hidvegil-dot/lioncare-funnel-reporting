@@ -1,0 +1,62 @@
+name: Fix Webinar Appointment Datetime
+
+on:
+  schedule:
+    # Temporary safety net until the 2026-07-20 webinar: if GHL still creates
+    # 2026-07-21 18:00 webinar appointments, move them to 2026-07-20 18:00.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run without updating appointments"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  fix-webinar-appointments:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      REPORT_DATA_STRICT: "true"
+      DRY_RUN: ${{ inputs.dry_run || 'false' }}
+    steps:
+      - name: Stop after webinar time
+        id: window
+        run: |
+          now="$(TZ=Europe/Budapest date +%s)"
+          cutoff="$(TZ=Europe/Budapest date -d '2026-07-20 18:00:00' +%s)"
+          if [ "$now" -le "$cutoff" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_fix=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_fix=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.window.outputs.run_fix == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.window.outputs.run_fix == 'true'
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+        if: steps.window.outputs.run_fix == 'true'
+      - name: Fix webinar appointments
+        if: steps.window.outputs.run_fix == 'true'
+        run: |
+          args=(
+            --calendar-id "GOLaB6F3CTDmT19NuvpR"
+            --required-tag "webinar_lead"
+            --old-start "2026-07-21 18:00:00"
+            --new-start "2026-07-20 18:00:00"
+            --new-end "2026-07-20 19:00:00"
+          )
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python scripts/fix_webinar_appointment_datetime.py "${args[@]}"
