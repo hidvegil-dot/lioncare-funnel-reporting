@@ -3,12 +3,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ghl_client import GHLClient, GHLConfig
 from meta_ads_client import MetaAdsClient, MetaAdsConfig
