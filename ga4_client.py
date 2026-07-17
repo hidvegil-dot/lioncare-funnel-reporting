@@ -132,11 +132,6 @@ class GA4Client:
                 "booking_url": "https://lioncare.hu/foglalas/",
                 "thank_you_url": "https://lioncare.hu/koszonjuk-meta-nyugdij/",
             },
-            {
-                "landing_url": "https://finshield.hu/kata-nyugdij",
-                "booking_url": None,
-                "thank_you_url": "https://finshield.hu/kata-nyugdij-typ",
-            },
         ]
 
         rows = []

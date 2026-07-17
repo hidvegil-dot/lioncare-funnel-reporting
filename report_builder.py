@@ -1077,8 +1077,6 @@ def build_comparison_quick_snapshot(
 def _landing_card_title(url: str) -> str:
     if "lioncare.hu/landing-meta-nyugdij" in url:
         return "LIONCARE LANDINGRŐL JÖTT LEAD"
-    if "finshield.hu/kata-nyugdij" in url:
-        return "FINSHIELD LANDINGRŐL JÖTT LEAD"
     host_and_path = url.replace("https://", "").replace("http://", "")
     return f"LANDING LEAD: {host_and_path}"
 
