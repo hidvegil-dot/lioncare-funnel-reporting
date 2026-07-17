@@ -1,0 +1,69 @@
+name: Query LC Schedule Leads
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date in YYYY-MM-DD format."
+        required: true
+        type: string
+      end_date:
+        description: "End date in YYYY-MM-DD format."
+        required: true
+        type: string
+      name_contains:
+        description: "Meta adset name filter."
+        required: false
+        default: "LC+ szolgáltatók Schedule"
+        type: string
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_PRIVATE_INTEGRATION_TOKEN: ${{ secrets.GHL_PRIVATE_INTEGRATION_TOKEN }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      META_CAMPAIGN_ID: ${{ secrets.META_CAMPAIGN_ID }}
+      REPORT_DATA_STRICT: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in \
+            GHL_LOCATION_ID \
+            GHL_BASE_URL \
+            META_AD_ACCOUNT_ID \
+            META_ACCESS_TOKEN \
+            META_CAMPAIGN_ID
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            elif [ "${!name}" = "$name" ]; then
+              echo "::error title=Invalid GitHub secret::$name contains the literal placeholder value"
+              missing=1
+            fi
+          done
+          if [ -z "${GHL_PRIVATE_INTEGRATION_TOKEN:-}" ] && [ -z "${GHL_API_KEY:-}" ]; then
+            echo "::error title=Missing GitHub secret::GHL_PRIVATE_INTEGRATION_TOKEN or GHL_API_KEY is required"
+            missing=1
+          fi
+          exit "$missing"
+      - name: Query LC Schedule leads
+        run: |
+          python scripts/query_lc_schedule_leads.py \
+            --start-date "${{ inputs.start_date }}" \
+            --end-date "${{ inputs.end_date }}" \
+            --name-contains "${{ inputs.name_contains }}"
