@@ -585,8 +585,8 @@
     <section class="section">
       <div class="section-header">
         <div>
-          <h2>GHL Owner</h2>
-          <p>Teljes aktuális GHL leadállomány kontakt owner szerint: Én, Amelita vagy Unassigned. Az Unassigned itt azt jelenti, hogy a kontakt `assignedTo` mezője üres; ez nem ugyanaz, mint az Opportunities pipeline unassigned listája.</p>
+          <h2>GHL Opportunity owner</h2>
+          <p>Aktuális open Opportunities állomány owner szerint: Én, Amelita vagy Unassigned. Ez ugyanazt az üzleti logikát követi, amit az Opportunities képernyőn látsz.</p>
         </div>
       </div>
       <div class="table-shell">
@@ -595,10 +595,7 @@
             <tr>
               <th>Owner</th>
               <th>Összes</th>
-              <th>Új</th>
-              <th>Foglalt</th>
-              <th>Megjelent</th>
-              <th>Lezárt</th>
+              <th>Open</th>
               <th>Státusz nélkül</th>
             </tr>
           </thead>
@@ -607,15 +604,12 @@
             <tr>
               <td>{{ row.owner_label }}</td>
               <td>{{ row.total }}</td>
-              <td>{{ row.new }}</td>
-              <td>{{ row.booked }}</td>
-              <td>{{ row.showed }}</td>
-              <td>{{ row.closed }}</td>
+              <td>{{ row.open }}</td>
               <td>{{ row.unknown }}</td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="7">Nincs GHL owner adat.</td>
+              <td colspan="4">Nincs GHL opportunity owner adat.</td>
             </tr>
             {% endfor %}
           </tbody>

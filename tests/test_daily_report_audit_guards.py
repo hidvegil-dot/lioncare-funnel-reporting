@@ -8,7 +8,12 @@ from pathlib import Path
 from ghl_client import GHLClient
 from google_sheets_client import _column_letter
 from parser import DAILY_REPORT_INDEX_COLUMNS, build_historical_rows
-from report_builder import _build_current_crm_by_owner_rows, _evaluate_meta_adset, build_daily_decision_report
+from report_builder import (
+    _build_current_crm_by_opportunity_owner_rows,
+    _build_current_crm_by_owner_rows,
+    _evaluate_meta_adset,
+    build_daily_decision_report,
+)
 from scripts.check_daily_report_index import _daily_report_exists
 from scripts import monitor_github_actions
 
@@ -187,6 +192,30 @@ class DailyReportAuditGuardTest(unittest.TestCase):
 
         labels = {row["owner_label"] for row in rows}
         self.assertEqual({"Én", "Amelita", "Unassigned"}, labels)
+
+    def test_opportunity_owner_rows_count_open_opportunities(self) -> None:
+        opportunities = [
+            {"status": "open", "assignedTo": "user_laci", "pipelineStageName": "Visszahívást kért"},
+            {"status": "open", "assignedTo": "user_laci", "pipelineStageName": "Nem vette fel 1"},
+            {"status": "open", "assignedTo": "user_amelita", "pipelineStageName": "Nem vette fel 2"},
+            {"status": "open", "assignedTo": "", "pipelineStageName": "Letöltötte"},
+            {"status": "won", "assignedTo": "user_laci", "pipelineStageName": "Lezárt"},
+        ]
+        previous_labels = os.environ.get("GHL_USER_LABELS")
+        os.environ["GHL_USER_LABELS"] = "user_laci:Hidvégi László,user_amelita:Gulyás Amelita"
+        try:
+            rows = _build_current_crm_by_opportunity_owner_rows(opportunities)
+        finally:
+            if previous_labels is None:
+                os.environ.pop("GHL_USER_LABELS", None)
+            else:
+                os.environ["GHL_USER_LABELS"] = previous_labels
+
+        by_label = {row["owner_label"]: row for row in rows}
+        self.assertEqual(2, by_label["Én"]["total"])
+        self.assertEqual(1, by_label["Amelita"]["total"])
+        self.assertEqual(1, by_label["Unassigned"]["total"])
+        self.assertNotEqual(3, by_label["Én"]["total"])
 
     def test_daily_report_index_check_requires_drive_links(self) -> None:
         values = [

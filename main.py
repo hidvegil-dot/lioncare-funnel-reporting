@@ -226,6 +226,7 @@ def main() -> None:
             end_date=end_date,
         )
         current_crm_contacts: list[dict[str, object]] | None = None
+        current_crm_opportunities: list[dict[str, object]] | None = None
         if args.report_type == "daily":
             full_contacts_started_at = time.perf_counter()
             current_crm_contacts = client.fetch_all_contacts()
@@ -233,6 +234,13 @@ def main() -> None:
                 "Fetched %s full CRM contacts in %.2fs",
                 len(current_crm_contacts),
                 time.perf_counter() - full_contacts_started_at,
+            )
+            opportunities_started_at = time.perf_counter()
+            current_crm_opportunities = client.fetch_opportunities()
+            logger.info(
+                "Fetched %s full CRM opportunities in %.2fs",
+                len(current_crm_opportunities),
+                time.perf_counter() - opportunities_started_at,
             )
             daily_appointments_started_at = time.perf_counter()
             # Daily booking/show metrics must reflect real calendar activity, not only
@@ -295,6 +303,7 @@ def main() -> None:
                 meta_data=meta_data,
                 contacts=contacts,
                 current_crm_contacts=current_crm_contacts or contacts,
+                current_crm_opportunities=current_crm_opportunities,
             )
 
         if args.report_type == "weekly_compare":

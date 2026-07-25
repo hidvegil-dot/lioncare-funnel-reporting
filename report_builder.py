@@ -273,6 +273,7 @@ def build_daily_decision_report(
     meta_data: dict[str, Any] | None,
     contacts: list[dict[str, Any]],
     current_crm_contacts: list[dict[str, Any]],
+    current_crm_opportunities: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     ghl_by_landing = _build_ghl_landing_rows(contacts=contacts, start_date=report_date, end_date=report_date)
     ghl_total = sum(row["lead_count"] for row in ghl_by_landing)
@@ -357,7 +358,7 @@ def build_daily_decision_report(
             "unattributed_leads": unattributed_leads,
             "current_crm_total": sum(int(row["count"]) for row in current_crm_status_rows),
             "current_crm_by_status": current_crm_status_rows,
-            "current_crm_by_owner": _build_current_crm_by_owner_rows(current_crm_contacts),
+            "current_crm_by_owner": _build_current_crm_by_opportunity_owner_rows(current_crm_opportunities or []),
         },
         "calculated": {
             "click_to_landing_pct": safe_pct(landing_page_view, link_click),
@@ -547,6 +548,63 @@ def _build_current_crm_by_owner_rows(contacts: list[dict[str, Any]]) -> list[dic
     rows = list(rows_by_owner.values())
     rows.sort(key=lambda row: (row["owner_id"] == "unassigned", -row["total"], row["owner_label"]))
     return rows
+
+
+def _build_current_crm_by_opportunity_owner_rows(opportunities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    user_labels = _load_user_labels()
+    rows_by_owner: dict[str, dict[str, Any]] = {}
+
+    for opportunity in opportunities:
+        status = str(opportunity.get("status") or "").strip().lower()
+        if status and status != "open":
+            continue
+
+        owner_id = _opportunity_owner_id(opportunity) or "unassigned"
+        owner_label = _owner_display_label(
+            user_labels.get(owner_id, "Unassigned" if owner_id == "unassigned" else owner_id)
+        )
+        row = rows_by_owner.setdefault(
+            owner_id,
+            {
+                "owner_id": owner_id,
+                "owner_label": owner_label,
+                "total": 0,
+                "new": 0,
+                "booked": 0,
+                "showed": 0,
+                "closed": 0,
+                "unknown": 0,
+                "open": 0,
+                "lost": 0,
+                "won": 0,
+            },
+        )
+        row["total"] += 1
+        row["open"] += 1
+
+        stage = str(
+            opportunity.get("pipelineStageName")
+            or opportunity.get("stageName")
+            or opportunity.get("pipelineStageId")
+            or ""
+        ).strip()
+        if not stage:
+            row["unknown"] += 1
+
+    rows = list(rows_by_owner.values())
+    rows.sort(key=lambda row: (row["owner_id"] == "unassigned", -row["total"], row["owner_label"]))
+    return rows
+
+
+def _opportunity_owner_id(opportunity: dict[str, Any]) -> str:
+    for key in ("assignedTo", "assignedUserId", "userId", "ownerId"):
+        value = opportunity.get(key)
+        if isinstance(value, dict):
+            value = value.get("id") or value.get("_id")
+        normalized = str(value or "").strip()
+        if normalized:
+            return normalized
+    return ""
 
 
 def _owner_display_label(label: str) -> str:
