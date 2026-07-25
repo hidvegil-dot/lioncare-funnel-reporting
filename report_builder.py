@@ -8,6 +8,7 @@ from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from reportlab.lib import colors
@@ -282,7 +283,14 @@ def build_daily_decision_report(
     landing_rows = (ga4_data or {}).get("landing_performance", {}).get("rows", [])
     meta_summary = (meta_data or {}).get("summary") or {}
     ga4_summary = (ga4_data or {}).get("landing_performance", {}).get("summary") or {}
-    meta_adsets = _build_meta_adset_rows((meta_data or {}).get("adsets") or [])
+    raw_meta_adsets = (meta_data or {}).get("adsets") or []
+    meta_adsets = _build_meta_adset_rows(raw_meta_adsets)
+    ghl_by_adset = _build_ghl_adset_source_rows(
+        contacts=contacts,
+        meta_adsets=raw_meta_adsets,
+        start_date=report_date,
+        end_date=report_date,
+    )
     funnel_type = _infer_daily_funnel_type(meta_adsets)
 
     link_click = int(meta_summary.get("link_click", 0))
@@ -343,6 +351,7 @@ def build_daily_decision_report(
         "ghl": {
             "new_leads": int(summary.get("new_leads", 0)),
             "total_leads": ghl_total,
+            "by_adset": ghl_by_adset,
             "by_landing": ghl_by_landing,
             "by_status": ghl_status_rows,
             "unattributed_leads": unattributed_leads,
@@ -1098,6 +1107,100 @@ def _build_ghl_landing_rows(
         landing_url = contact.get("landing_page_url") or "ismeretlen"
         counts[str(landing_url)] += 1
     return [{"landing_url": landing_url, "lead_count": count} for landing_url, count in counts.most_common()]
+
+
+def _build_ghl_adset_source_rows(
+    *,
+    contacts: list[dict[str, Any]],
+    meta_adsets: list[dict[str, Any]],
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    adset_names = _build_meta_adset_name_lookup(meta_adsets)
+    counts: Counter[str] = Counter()
+    labels: dict[str, str] = {}
+
+    for contact in contacts:
+        lead_date = _contact_lead_date(contact)
+        if not isinstance(lead_date, date) or not (start_date <= lead_date <= end_date):
+            continue
+
+        adset_id = _extract_contact_adset_id(contact)
+        if adset_id:
+            key = adset_id
+            labels[key] = adset_names.get(adset_id) or adset_id
+        else:
+            key = "unknown"
+            labels[key] = "Ismeretlen / nincs UTM"
+        counts[key] += 1
+
+    return [
+        {
+            "adset_id": adset_id,
+            "adset_name": labels.get(adset_id, adset_id),
+            "lead_count": count,
+        }
+        for adset_id, count in sorted(
+            counts.items(),
+            key=lambda item: (item[0] == "unknown", -item[1], labels.get(item[0], item[0])),
+        )
+    ]
+
+
+def _build_meta_adset_name_lookup(meta_adsets: list[dict[str, Any]]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for adset in meta_adsets:
+        adset_id = str(adset.get("adset_id") or adset.get("id") or "").strip()
+        adset_name = str(adset.get("adset_name") or adset.get("name") or "").strip()
+        if adset_id and adset_name:
+            lookup[adset_id] = adset_name
+    return lookup
+
+
+def _extract_contact_adset_id(contact: dict[str, Any]) -> str | None:
+    raw = contact.get("raw") if isinstance(contact.get("raw"), dict) else contact
+    for attribution in _iter_contact_attributions(raw):
+        direct_value = _first_present(
+            attribution,
+            "utmTerm",
+            "utm_term",
+            "adsetId",
+            "adset_id",
+        )
+        if direct_value:
+            return str(direct_value).strip()
+
+        raw_url = attribution.get("url") or attribution.get("utmUrl")
+        parsed_value = _extract_query_value(raw_url, "utm_term")
+        if parsed_value:
+            return parsed_value
+    return None
+
+
+def _iter_contact_attributions(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    attributions: list[dict[str, Any]] = []
+    for key in ("attributionSource", "lastAttributionSource", "attributions"):
+        value = raw.get(key)
+        if isinstance(value, dict):
+            attributions.append(value)
+        elif isinstance(value, list):
+            attributions.extend(item for item in value if isinstance(item, dict))
+    return attributions
+
+
+def _first_present(source: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = source.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _extract_query_value(raw_url: Any, key: str) -> str | None:
+    if not raw_url:
+        return None
+    values = parse_qs(urlparse(str(raw_url)).query).get(key) or []
+    return str(values[0]).strip() if values and values[0] else None
 
 
 def _difference_pct(source_value: int, comparison_value: int) -> float:

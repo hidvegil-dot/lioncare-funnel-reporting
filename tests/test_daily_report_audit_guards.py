@@ -80,6 +80,62 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertEqual("Meta űrlap lead", report["meta"]["lead_label"])
         self.assertEqual(1600, report["calculated"]["meta_cpl"])
 
+    def test_daily_report_breaks_down_ghl_leads_by_adset_utm(self) -> None:
+        report = build_daily_decision_report(
+            report_date=date(2026, 7, 24),
+            summary={
+                "new_leads": 2,
+                "booked_leads": 0,
+                "showed_leads": 0,
+                "closed_leads": 0,
+            },
+            ga4_data=None,
+            meta_data={
+                "summary": {"spend": 1000, "registration_leads": 1},
+                "adsets": [
+                    {
+                        "adset_id": "1201",
+                        "adset_name": "LC+ szolgáltatók - CompleteRegistration",
+                        "spend": 1000,
+                        "registration_leads": 1,
+                    }
+                ],
+            },
+            contacts=[
+                {
+                    "lead_date": date(2026, 7, 24),
+                    "landing_page_url": "https://lioncare.hu/landing-meta-nyugdij/",
+                    "raw": {
+                        "attributionSource": {
+                            "url": "https://lioncare.hu/landing-meta-nyugdij/?utm_term=1201&utm_content=ad1"
+                        }
+                    },
+                },
+                {
+                    "lead_date": date(2026, 7, 24),
+                    "landing_page_url": "ismeretlen",
+                    "raw": {"attributionSource": {"url": "https://lioncare.hu/webinar"}},
+                },
+            ],
+            current_crm_contacts=[],
+        )
+
+        self.assertEqual(
+            [
+                {
+                    "adset_id": "1201",
+                    "adset_name": "LC+ szolgáltatók - CompleteRegistration",
+                    "lead_count": 1,
+                },
+                {
+                    "adset_id": "unknown",
+                    "adset_name": "Ismeretlen / nincs UTM",
+                    "lead_count": 1,
+                },
+            ],
+            report["ghl"]["by_adset"],
+        )
+
     def test_daily_report_index_contains_drive_links_and_funnel_type(self) -> None:
         rows = build_historical_rows(
             report_date=date(2026, 6, 4),

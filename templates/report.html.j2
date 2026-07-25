@@ -690,9 +690,32 @@
       <div class="section-header">
         <div>
           <h2>GHL lead forrás</h2>
-          <p>Napi GHL leadek landing URL szerint.</p>
+          <p>Napi GHL leadek hirdetéssorozat és landing URL szerint. A hirdetéssorozat bontás a GHL kontakt attribúciós UTM adataiból készül.</p>
         </div>
       </div>
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Hirdetéssorozat</th>
+              <th>Lead count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in decision_report.ghl.by_adset %}
+            <tr>
+              <td>{{ row.adset_name }}</td>
+              <td>{{ row.lead_count }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="2">Nincs GHL lead hirdetéssorozat forrással ezen a napon.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
       <div class="table-shell">
         <table>
           <thead>
