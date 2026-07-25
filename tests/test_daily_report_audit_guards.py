@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import unittest
 from datetime import date, datetime
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 from ghl_client import GHLClient
 from google_sheets_client import _column_letter
 from parser import DAILY_REPORT_INDEX_COLUMNS, build_historical_rows
-from report_builder import _evaluate_meta_adset, build_daily_decision_report
+from report_builder import _build_current_crm_by_owner_rows, _evaluate_meta_adset, build_daily_decision_report
 from scripts.check_daily_report_index import _daily_report_exists
 from scripts import monitor_github_actions
 
@@ -111,6 +112,25 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertEqual("https://drive/csv", index_row["report_csv_link"])
         self.assertEqual("landing", index_row["funnel_type"])
         self.assertEqual(13, index_row["ghl_leads"])
+
+    def test_owner_rows_use_business_owner_labels(self) -> None:
+        contacts = [
+            {"lead_status": "new", "raw": {"assignedTo": "user_laci"}},
+            {"lead_status": "booked", "raw": {"assignedTo": "user_amelita"}},
+            {"lead_status": "showed", "raw": {"assignedTo": ""}},
+        ]
+        previous_labels = os.environ.get("GHL_USER_LABELS")
+        os.environ["GHL_USER_LABELS"] = "user_laci:Hidvégi László,user_amelita:Gulyás Amelita"
+        try:
+            rows = _build_current_crm_by_owner_rows(contacts)
+        finally:
+            if previous_labels is None:
+                os.environ.pop("GHL_USER_LABELS", None)
+            else:
+                os.environ["GHL_USER_LABELS"] = previous_labels
+
+        labels = {row["owner_label"] for row in rows}
+        self.assertEqual({"Én", "Amelita", "Unassigned"}, labels)
 
     def test_daily_report_index_check_requires_drive_links(self) -> None:
         values = [
