@@ -195,14 +195,17 @@ class DailyReportAuditGuardTest(unittest.TestCase):
 
     def test_opportunity_owner_rows_count_open_opportunities(self) -> None:
         opportunities = [
-            {"status": "open", "assignedTo": "user_laci", "pipelineStageName": "Visszahívást kért"},
-            {"status": "open", "assignedTo": "user_laci", "pipelineStageName": "Nem vette fel 1"},
-            {"status": "open", "assignedTo": "user_amelita", "pipelineStageName": "Nem vette fel 2"},
-            {"status": "open", "assignedTo": "", "pipelineStageName": "Letöltötte"},
-            {"status": "won", "assignedTo": "user_laci", "pipelineStageName": "Lezárt"},
+            {"status": "open", "assignedTo": "user_laci", "pipelineId": "biztositas", "pipelineStageName": "Visszahívást kért"},
+            {"status": "open", "assignedTo": "user_laci", "pipelineId": "biztositas", "pipelineStageName": "Nem vette fel 1"},
+            {"status": "open", "assignedTo": "user_amelita", "pipelineId": "biztositas", "pipelineStageName": "Nem vette fel 2"},
+            {"status": "open", "assignedTo": "", "pipelineId": "biztositas", "pipelineStageName": "Letöltötte"},
+            {"status": "won", "assignedTo": "user_laci", "pipelineId": "biztositas", "pipelineStageName": "Lezárt"},
+            {"status": "open", "assignedTo": "user_laci", "pipelineId": "masik", "pipelineStageName": "Másik pipeline"},
         ]
         previous_labels = os.environ.get("GHL_USER_LABELS")
+        previous_pipeline = os.environ.get("GHL_OPPORTUNITY_PIPELINE_ID")
         os.environ["GHL_USER_LABELS"] = "user_laci:Hidvégi László,user_amelita:Gulyás Amelita"
+        os.environ.pop("GHL_OPPORTUNITY_PIPELINE_ID", None)
         try:
             rows = _build_current_crm_by_opportunity_owner_rows(opportunities)
         finally:
@@ -210,6 +213,10 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                 os.environ.pop("GHL_USER_LABELS", None)
             else:
                 os.environ["GHL_USER_LABELS"] = previous_labels
+            if previous_pipeline is None:
+                os.environ.pop("GHL_OPPORTUNITY_PIPELINE_ID", None)
+            else:
+                os.environ["GHL_OPPORTUNITY_PIPELINE_ID"] = previous_pipeline
 
         by_label = {row["owner_label"]: row for row in rows}
         self.assertEqual(2, by_label["Én"]["total"])

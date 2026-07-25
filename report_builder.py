@@ -553,8 +553,9 @@ def _build_current_crm_by_owner_rows(contacts: list[dict[str, Any]]) -> list[dic
 def _build_current_crm_by_opportunity_owner_rows(opportunities: list[dict[str, Any]]) -> list[dict[str, Any]]:
     user_labels = _load_user_labels()
     rows_by_owner: dict[str, dict[str, Any]] = {}
+    scoped_opportunities = _select_owner_scope_opportunities(opportunities)
 
-    for opportunity in opportunities:
+    for opportunity in scoped_opportunities:
         status = str(opportunity.get("status") or "").strip().lower()
         if status and status != "open":
             continue
@@ -594,6 +595,48 @@ def _build_current_crm_by_opportunity_owner_rows(opportunities: list[dict[str, A
     rows = list(rows_by_owner.values())
     rows.sort(key=lambda row: (row["owner_id"] == "unassigned", -row["total"], row["owner_label"]))
     return rows
+
+
+def _select_owner_scope_opportunities(opportunities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    configured_pipeline_id = os.getenv("GHL_OPPORTUNITY_PIPELINE_ID", "").strip()
+    if configured_pipeline_id:
+        return [
+            opportunity
+            for opportunity in opportunities
+            if _opportunity_pipeline_id(opportunity) == configured_pipeline_id
+        ]
+
+    open_opportunities = [
+        opportunity
+        for opportunity in opportunities
+        if str(opportunity.get("status") or "").strip().lower() in {"", "open"}
+    ]
+    pipeline_counts = Counter(
+        pipeline_id
+        for pipeline_id in (_opportunity_pipeline_id(opportunity) for opportunity in open_opportunities)
+        if pipeline_id
+    )
+    if not pipeline_counts:
+        return opportunities
+
+    primary_pipeline_id, _ = pipeline_counts.most_common(1)[0]
+    return [
+        opportunity
+        for opportunity in opportunities
+        if _opportunity_pipeline_id(opportunity) == primary_pipeline_id
+    ]
+
+
+def _opportunity_pipeline_id(opportunity: dict[str, Any]) -> str:
+    for key in ("pipelineId", "pipeline_id", "pipelineID"):
+        value = opportunity.get(key)
+        normalized = str(value or "").strip()
+        if normalized:
+            return normalized
+    pipeline = opportunity.get("pipeline")
+    if isinstance(pipeline, dict):
+        return str(pipeline.get("id") or pipeline.get("_id") or "").strip()
+    return ""
 
 
 def _opportunity_owner_id(opportunity: dict[str, Any]) -> str:

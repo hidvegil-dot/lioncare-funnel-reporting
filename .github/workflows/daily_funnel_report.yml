@@ -30,6 +30,7 @@ jobs:
       GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
       GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
       GHL_USER_LABELS: ${{ secrets.GHL_USER_LABELS }}
+      GHL_OPPORTUNITY_PIPELINE_ID: ${{ secrets.GHL_OPPORTUNITY_PIPELINE_ID }}
       GA4_PROPERTY_ID: ${{ secrets.GA4_PROPERTY_ID }}
       GA4_CREDENTIALS_PATH: ${{ github.workspace }}/ga4-service-account.json
       META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
