@@ -499,7 +499,7 @@ def _build_current_crm_by_owner_rows(contacts: list[dict[str, Any]]) -> list[dic
         raw = contact.get("raw") or {}
         owner_id = str(raw.get("assignedTo") or "").strip() or "unassigned"
         owner_label = _owner_display_label(
-            user_labels.get(owner_id, "Nincs delegálva" if owner_id == "unassigned" else owner_id)
+            user_labels.get(owner_id, "Kontakt owner nélkül" if owner_id == "unassigned" else owner_id)
         )
         row = rows_by_owner.setdefault(
             owner_id,
@@ -544,8 +544,8 @@ def _owner_display_label(label: str) -> str:
     mapping = {
         "László Hidvégi": "Hidvégi László",
         "Amelita Gulyás": "Gulyás Amelita",
-        "Nincs owner": "Nincs delegálva",
-        "unassigned": "Nincs delegálva",
+        "Nincs owner": "Kontakt owner nélkül",
+        "unassigned": "Kontakt owner nélkül",
     }
     return mapping.get(label, label)
 

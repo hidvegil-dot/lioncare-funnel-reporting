@@ -586,14 +586,14 @@
       <div class="section-header">
         <div>
           <h2>GHL delegálás</h2>
-          <p>Teljes aktuális GHL leadállomány személyhez delegálva. A státusz bontás a GHL funnel-státusz mezőből készül; a pipeline stage-ek részletesebb munkafázisok, nem tiszta Új/Foglalt/Megjelent/Lezárt kategóriák.</p>
+          <p>Teljes aktuális GHL leadállomány kontakt owner szerint. A „Kontakt owner nélkül” sor nem az Opportunities unassigned listája, hanem azok a kontaktok, ahol a kontakt `assignedTo` mezője üres. A státusz bontás a GHL funnel-státusz mezőből készül; a pipeline stage-ek részletesebb munkafázisok, nem tiszta Új/Foglalt/Megjelent/Lezárt kategóriák.</p>
         </div>
       </div>
       <div class="table-shell">
         <table>
           <thead>
             <tr>
-              <th>Delegált</th>
+              <th>Kontakt owner</th>
               <th>Összes</th>
               <th>Új</th>
               <th>Foglalt</th>
