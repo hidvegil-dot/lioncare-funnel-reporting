@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest import mock
 from datetime import date, datetime
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from report_builder import (
     _evaluate_meta_adset,
     build_daily_decision_report,
 )
-from scripts.check_daily_report_index import _daily_report_exists
+from scripts.check_daily_report_index import _daily_report_exists, _fetch_daily_report_index_values
 from scripts import monitor_github_actions
 
 
@@ -262,6 +263,56 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertTrue(exists)
         self.assertEqual("daily_report_index row exists; Drive links not required", reason)
         self.assertEqual("2026-06-06", row["date"])
+
+    def test_daily_report_index_fetch_retries_temporary_sheets_errors(self) -> None:
+        class FakeResponse:
+            status = 503
+
+        class FakeHttpError(Exception):
+            resp = FakeResponse()
+
+        class FakeGetRequest:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def execute(self) -> dict[str, list[list[str]]]:
+                self.calls += 1
+                if self.calls == 1:
+                    raise FakeHttpError("temporary unavailable")
+                return {"values": [["date"], ["2026-06-06"]]}
+
+        class FakeValues:
+            def __init__(self, request: FakeGetRequest) -> None:
+                self.request = request
+
+            def get(self, **_: object) -> FakeGetRequest:
+                return self.request
+
+        class FakeSpreadsheets:
+            def __init__(self, request: FakeGetRequest) -> None:
+                self.request = request
+
+            def values(self) -> FakeValues:
+                return FakeValues(self.request)
+
+        class FakeService:
+            def __init__(self, request: FakeGetRequest) -> None:
+                self.request = request
+
+            def spreadsheets(self) -> FakeSpreadsheets:
+                return FakeSpreadsheets(self.request)
+
+        request = FakeGetRequest()
+        with mock.patch("scripts.check_daily_report_index.HttpError", FakeHttpError):
+            values = _fetch_daily_report_index_values(
+                service=FakeService(request),
+                spreadsheet_id="sheet",
+                attempts=2,
+                base_sleep_seconds=0,
+            )
+
+        self.assertEqual([["date"], ["2026-06-06"]], values)
+        self.assertEqual(2, request.calls)
 
     def test_daily_workflow_skips_inactive_schedule_guard(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/daily_funnel_report.yml").read_text(encoding="utf-8")

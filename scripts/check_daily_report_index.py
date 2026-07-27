@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 from datetime import date
 from typing import Any
 
 from google.oauth2 import service_account
+from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 
 
@@ -36,13 +38,7 @@ def main() -> int:
         raise SystemExit("Missing GOOGLE_SHEET_ID")
 
     service = _sheets_service(credentials_path)
-    values = (
-        service.spreadsheets()
-        .values()
-        .get(spreadsheetId=spreadsheet_id, range="'daily_report_index'!A:S")
-        .execute()
-        .get("values", [])
-    )
+    values = _fetch_daily_report_index_values(service=service, spreadsheet_id=spreadsheet_id)
     exists, reason, row = _daily_report_exists(
         values=values,
         report_date=report_date,
@@ -70,6 +66,37 @@ def _sheets_service(credentials_path: str) -> Any:
         scopes=[SHEETS_SCOPE],
     )
     return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+
+
+def _fetch_daily_report_index_values(
+    *,
+    service: Any,
+    spreadsheet_id: str,
+    attempts: int = 5,
+    base_sleep_seconds: float = 3.0,
+) -> list[list[Any]]:
+    last_error: HttpError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return (
+                service.spreadsheets()
+                .values()
+                .get(spreadsheetId=spreadsheet_id, range="'daily_report_index'!A:S")
+                .execute()
+                .get("values", [])
+            )
+        except HttpError as exc:
+            last_error = exc
+            status = getattr(exc.resp, "status", None)
+            if status not in {429, 500, 502, 503, 504} or attempt == attempts:
+                raise
+            sleep_seconds = base_sleep_seconds * attempt
+            print(
+                f"Google Sheets API temporary error status={status}; "
+                f"retry={attempt}/{attempts - 1} sleep={sleep_seconds:.0f}s"
+            )
+            time.sleep(sleep_seconds)
+    raise last_error or RuntimeError("Could not fetch daily_report_index values")
 
 
 def _daily_report_exists(

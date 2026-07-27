@@ -152,7 +152,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: daily-funnel-report-watchdog
-          if-no-files-found: error
+          if-no-files-found: warn
           path: |
             daily_funnel_report.html
             daily_funnel_report.csv
