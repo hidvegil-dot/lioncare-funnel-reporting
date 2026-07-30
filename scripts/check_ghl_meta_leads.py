@@ -28,25 +28,95 @@ def contact_value(contact: dict[str, Any], *keys: str) -> str:
     return ""
 
 
-def index_contacts(contacts: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+def normalize_name(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def index_contacts(
+    contacts: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     by_email: dict[str, dict[str, Any]] = {}
     by_phone: dict[str, dict[str, Any]] = {}
+    by_name: dict[str, dict[str, Any]] = {}
 
     for contact in contacts:
         email = normalize_email(contact_value(contact, "email"))
         phone = normalize_phone(contact_value(contact, "phone"))
+        name = normalize_name(
+            contact_value(contact, "name")
+            or " ".join(
+                part
+                for part in [
+                    contact_value(contact, "firstName"),
+                    contact_value(contact, "lastName"),
+                ]
+                if part
+            )
+        )
         if email:
             by_email[email] = contact
         if phone:
             by_phone[phone] = contact
+        if name:
+            by_name[name] = contact
 
-    return by_email, by_phone
+    return by_email, by_phone, by_name
+
+
+def compact_attribution(value: Any) -> Any:
+    if isinstance(value, list):
+        return [compact_attribution(item) for item in value if isinstance(item, dict)]
+    if not isinstance(value, dict):
+        return value
+    keys = (
+        "url",
+        "utmUrl",
+        "utmSource",
+        "utmMedium",
+        "utmCampaign",
+        "utmTerm",
+        "utmContent",
+        "source",
+        "sessionSource",
+        "medium",
+        "mediumId",
+        "referrer",
+        "landingPage",
+        "campaign",
+    )
+    return {key: value.get(key) for key in keys if value.get(key) not in (None, "", [], {})}
+
+
+def contact_debug_summary(contact: dict[str, Any] | None) -> dict[str, Any]:
+    if not contact:
+        return {}
+    return {
+        "ghl_contact_id": contact_value(contact, "id", "contactId"),
+        "ghl_name": contact_value(contact, "name")
+        or " ".join(
+            part
+            for part in [
+                contact_value(contact, "firstName"),
+                contact_value(contact, "lastName"),
+            ]
+            if part
+        ),
+        "ghl_date_added": contact_value(contact, "dateAdded", "createdAt", "date_added"),
+        "ghl_updated_at": contact_value(contact, "updatedAt", "dateUpdated"),
+        "ghl_source": contact_value(contact, "source"),
+        "ghl_campaign": contact_value(contact, "campaign"),
+        "ghl_assigned_to": contact_value(contact, "assignedTo"),
+        "ghl_tags": contact.get("tags") or [],
+        "ghl_attribution_source": compact_attribution(contact.get("attributionSource")),
+        "ghl_last_attribution_source": compact_attribution(contact.get("lastAttributionSource")),
+        "ghl_attributions": compact_attribution(contact.get("attributions")),
+    }
 
 
 def check_leads(meta_leads: list[dict[str, Any]]) -> dict[str, Any]:
     client = GHLClient(GHLConfig.from_env())
     contacts = client.iter_contacts()
-    by_email, by_phone = index_contacts(contacts)
+    by_email, by_phone, by_name = index_contacts(contacts)
 
     results = []
     for lead in meta_leads:
@@ -57,6 +127,9 @@ def check_leads(meta_leads: list[dict[str, Any]]) -> dict[str, Any]:
         if contact is None and phone:
             contact = by_phone.get(phone)
             matched_by = "phone" if contact else None
+        if contact is None and lead.get("name"):
+            contact = by_name.get(normalize_name(lead.get("name")))
+            matched_by = "name" if contact else None
 
         results.append(
             {
@@ -68,10 +141,7 @@ def check_leads(meta_leads: list[dict[str, Any]]) -> dict[str, Any]:
                 "lead_status": lead.get("lead_status"),
                 "found_in_ghl": contact is not None,
                 "matched_by": matched_by,
-                "ghl_contact_id": contact_value(contact or {}, "id", "contactId"),
-                "ghl_date_added": contact_value(contact or {}, "dateAdded", "createdAt", "date_added"),
-                "ghl_source": contact_value(contact or {}, "source"),
-                "ghl_tags": (contact or {}).get("tags") or [],
+                **contact_debug_summary(contact),
             }
         )
 
