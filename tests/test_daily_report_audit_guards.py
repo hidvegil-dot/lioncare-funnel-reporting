@@ -17,12 +17,24 @@ from report_builder import (
 )
 from scripts.check_daily_report_index import _daily_report_exists, _fetch_daily_report_index_values
 from scripts import monitor_github_actions
+from scripts.update_opportunity_status_by_pipeline import select_pipeline
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class DailyReportAuditGuardTest(unittest.TestCase):
+    def test_opportunity_status_update_selects_pipeline_accent_insensitive(self) -> None:
+        pipeline = select_pipeline(
+            [
+                {"id": "pipeline_1", "name": "Biztosítás 01"},
+                {"id": "pipeline_2", "name": "Ügyfélszerződések"},
+            ],
+            "ugyfelszerzodesek",
+        )
+
+        self.assertEqual("pipeline_2", pipeline["id"])
+
     def test_ghl_window_uses_created_date_when_lead_date_is_missing(self) -> None:
         client = GHLClient.__new__(GHLClient)
 

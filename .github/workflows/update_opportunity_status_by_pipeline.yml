@@ -1,0 +1,86 @@
+name: Update Opportunity Status By Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipeline_name:
+        description: "Exact GHL pipeline name."
+        required: true
+        default: "Ügyfélszerződések"
+        type: string
+      from_status:
+        description: "Current opportunity status to update."
+        required: true
+        default: "won"
+        type: choice
+        options:
+          - open
+          - won
+          - lost
+          - abandoned
+      to_status:
+        description: "Target opportunity status."
+        required: true
+        default: "open"
+        type: choice
+        options:
+          - open
+          - won
+          - lost
+          - abandoned
+      dry_run:
+        description: "Preview only; do not update GHL."
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Budapest
+      GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_PRIVATE_INTEGRATION_TOKEN: ${{ secrets.GHL_PRIVATE_INTEGRATION_TOKEN }}
+      GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
+      GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
+      GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
+      REPORT_DATA_STRICT: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in GHL_LOCATION_ID GHL_BASE_URL
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing GitHub secret::$name is empty or not configured"
+              missing=1
+            elif [ "${!name}" = "$name" ]; then
+              echo "::error title=Invalid GitHub secret::$name contains the literal placeholder value"
+              missing=1
+            fi
+          done
+          if [ -z "${GHL_PRIVATE_INTEGRATION_TOKEN:-}" ] && [ -z "${GHL_API_KEY:-}" ]; then
+            echo "::error title=Missing GitHub secret::GHL_PRIVATE_INTEGRATION_TOKEN or GHL_API_KEY is required"
+            missing=1
+          fi
+          exit "$missing"
+      - name: Update opportunity statuses
+        run: |
+          dry_flag="--dry-run"
+          if [ "${{ inputs.dry_run }}" = "false" ]; then
+            dry_flag="--no-dry-run"
+          fi
+
+          python scripts/update_opportunity_status_by_pipeline.py \
+            --pipeline-name "${{ inputs.pipeline_name }}" \
+            --from-status "${{ inputs.from_status }}" \
+            --to-status "${{ inputs.to_status }}" \
+            "$dry_flag"
