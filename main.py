@@ -227,6 +227,7 @@ def main() -> None:
         )
         current_crm_contacts: list[dict[str, object]] | None = None
         current_crm_opportunities: list[dict[str, object]] | None = None
+        current_crm_appointments: list[dict[str, object]] | None = None
         if args.report_type == "daily":
             full_contacts_started_at = time.perf_counter()
             current_crm_contacts = client.fetch_all_contacts()
@@ -245,16 +246,12 @@ def main() -> None:
             daily_appointments_started_at = time.perf_counter()
             # Daily booking/show metrics must reflect real calendar activity, not only
             # custom field dates on leads created inside the reporting window.
-            daily_appointments = client.fetch_appointments_for_contacts(
-                contacts=current_crm_contacts,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            rows = overlay_funnel_counts_from_appointments(rows=rows, appointments=daily_appointments)
+            current_crm_appointments = client.fetch_appointments_for_contacts(contacts=current_crm_contacts)
+            rows = overlay_funnel_counts_from_appointments(rows=rows, appointments=current_crm_appointments)
             summary = summarize_period(rows=rows, closed_meeting_counts=closed_meeting_counts)
             logger.info(
                 "Overlayed daily booking/show counts from %s appointments in %.2fs",
-                len(daily_appointments),
+                len(current_crm_appointments),
                 time.perf_counter() - daily_appointments_started_at,
             )
 
@@ -304,6 +301,7 @@ def main() -> None:
                 contacts=contacts,
                 current_crm_contacts=current_crm_contacts or contacts,
                 current_crm_opportunities=current_crm_opportunities,
+                current_crm_appointments=current_crm_appointments,
             )
 
         if args.report_type == "weekly_compare":

@@ -478,6 +478,77 @@
     <section class="section">
       <div class="section-header">
         <div>
+          <h2>Lead kohorsz előrehaladás</h2>
+          <p>Az adott napon beérkezett leadek aktuális állapota kontakt szinten. Egy lead itt egyszer szerepel, akkor is, ha később foglal vagy később jelenik meg.</p>
+        </div>
+      </div>
+      <div class="period-summary">
+        <article class="period-tile">
+          <div class="tile-label">Kohorsz lead</div>
+          <div class="tile-value">{{ decision_report.ghl.lead_cohort.total_leads }}</div>
+          <div class="tile-sub">Lead date: {{ decision_report.report_date }}</div>
+        </article>
+        <article class="period-tile">
+          <div class="tile-label">Van foglalás</div>
+          <div class="tile-value">{{ decision_report.ghl.lead_cohort.booked_total }}</div>
+          <div class="tile-sub">{{ decision_report.ghl.lead_cohort.lead_to_booking_pct }}% lead -> booking</div>
+        </article>
+        <article class="period-tile">
+          <div class="tile-label">Új foglalás aznap</div>
+          <div class="tile-value">{{ decision_report.ghl.lead_cohort.new_bookings_on_report_date }}</div>
+          <div class="tile-sub">Appointment létrehozva ezen a napon</div>
+        </article>
+        <article class="period-tile">
+          <div class="tile-label">Jövőbeni meet</div>
+          <div class="tile-value">{{ decision_report.ghl.lead_cohort.future_booking }}</div>
+          <div class="tile-sub">Még nem esedékes</div>
+        </article>
+        <article class="period-tile">
+          <div class="tile-label">Megtartott meet</div>
+          <div class="tile-value">{{ decision_report.ghl.lead_cohort.showed_total }}</div>
+          <div class="tile-sub">{{ decision_report.ghl.lead_cohort.booking_to_show_pct }}% booking -> showed</div>
+        </article>
+        <article class="period-tile">
+          <div class="tile-label">Új showed aznap</div>
+          <div class="tile-value">{{ decision_report.ghl.lead_cohort.new_showed_on_report_date }}</div>
+          <div class="tile-sub">Csak már elmúlt, showed státuszú meet</div>
+        </article>
+      </div>
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Lead</th>
+              <th>Állapot</th>
+              <th>Foglalás dátuma</th>
+              <th>Foglalás létrejött</th>
+              <th>Showed dátum</th>
+              <th>Forrás</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in decision_report.ghl.lead_cohort.rows %}
+            <tr>
+              <td>{{ row.name }}</td>
+              <td>{{ row.status_label }}</td>
+              <td>{{ row.booking_date or 'N/A' }}</td>
+              <td>{{ row.booking_created_date or 'N/A' }}</td>
+              <td>{{ row.showed_date or 'N/A' }}</td>
+              <td>{{ row.source or row.landing_page_url or 'Ismeretlen' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6">Nincs aznapi leadkohorsz adat.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
           <h2>Lead árak</h2>
           <p>Ez a napi riport fő döntési pontja: mennyiért vettünk Meta konverziót, és mennyiért lett belőle valódi GHL lead.</p>
         </div>

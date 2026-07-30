@@ -274,6 +274,7 @@ def build_daily_decision_report(
     contacts: list[dict[str, Any]],
     current_crm_contacts: list[dict[str, Any]],
     current_crm_opportunities: list[dict[str, Any]] | None = None,
+    current_crm_appointments: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     ghl_by_landing = _build_ghl_landing_rows(contacts=contacts, start_date=report_date, end_date=report_date)
     ghl_total = sum(row["lead_count"] for row in ghl_by_landing)
@@ -291,6 +292,11 @@ def build_daily_decision_report(
         meta_adsets=raw_meta_adsets,
         start_date=report_date,
         end_date=report_date,
+    )
+    lead_cohort = _build_daily_lead_cohort_progress(
+        contacts=contacts,
+        appointments=current_crm_appointments or [],
+        report_date=report_date,
     )
     funnel_type = _infer_daily_funnel_type(meta_adsets)
 
@@ -359,6 +365,7 @@ def build_daily_decision_report(
             "current_crm_total": sum(int(row["count"]) for row in current_crm_status_rows),
             "current_crm_by_status": current_crm_status_rows,
             "current_crm_by_owner": _build_current_crm_by_opportunity_owner_rows(current_crm_opportunities or []),
+            "lead_cohort": lead_cohort,
         },
         "calculated": {
             "click_to_landing_pct": safe_pct(landing_page_view, link_click),
@@ -1208,6 +1215,153 @@ def _build_ghl_landing_rows(
         landing_url = contact.get("landing_page_url") or "ismeretlen"
         counts[str(landing_url)] += 1
     return [{"landing_url": landing_url, "lead_count": count} for landing_url, count in counts.most_common()]
+
+
+def _build_daily_lead_cohort_progress(
+    *,
+    contacts: list[dict[str, Any]],
+    appointments: list[dict[str, Any]],
+    report_date: date,
+    as_of_date: date | None = None,
+) -> dict[str, Any]:
+    as_of_date = as_of_date or date.today()
+    cohort_contacts = [
+        contact
+        for contact in contacts
+        if isinstance(_contact_lead_date(contact), date) and _contact_lead_date(contact) == report_date
+    ]
+    appointments_by_contact = _group_appointments_by_contact(appointments)
+
+    rows: list[dict[str, Any]] = []
+    status_counts: Counter[str] = Counter()
+    new_bookings_on_report_date = 0
+    new_showed_on_report_date = 0
+
+    for contact in sorted(cohort_contacts, key=lambda item: str(item.get("name") or item.get("email") or item.get("id") or "")):
+        contact_id = str(contact.get("id") or "").strip()
+        contact_appointments = appointments_by_contact.get(contact_id, [])
+        booking = _first_booking_appointment(contact_appointments)
+        showed = _first_showed_appointment(contact_appointments, as_of_date=as_of_date)
+        booking_date = _extract_appointment_date(booking) if booking else None
+        showed_date = _extract_appointment_date(showed) if showed else None
+        booking_created_date = _extract_appointment_created_date(booking) if booking else None
+
+        if showed_date:
+            status = "showed"
+            status_label = "Megtartott meet"
+        elif booking_date and booking_date > as_of_date:
+            status = "future_booking"
+            status_label = "Jövőbeni meet"
+        elif booking_date:
+            status = "booked_pending_show"
+            status_label = "Foglalva, showed még nincs"
+        else:
+            status = "no_booking"
+            status_label = "Nincs foglalás"
+
+        if booking_created_date == report_date:
+            new_bookings_on_report_date += 1
+        if showed_date == report_date:
+            new_showed_on_report_date += 1
+
+        status_counts[status] += 1
+        rows.append(
+            {
+                "contact_id": contact_id,
+                "name": contact.get("name") or contact.get("email") or contact.get("phone") or contact_id,
+                "email": contact.get("email") or "",
+                "phone": contact.get("phone") or "",
+                "lead_date": report_date.isoformat(),
+                "status": status,
+                "status_label": status_label,
+                "booking_date": booking_date.isoformat() if booking_date else "",
+                "booking_created_date": booking_created_date.isoformat() if booking_created_date else "",
+                "showed_date": showed_date.isoformat() if showed_date else "",
+                "source": contact.get("source") or "",
+                "landing_page_url": contact.get("landing_page_url") or "",
+            }
+        )
+
+    total_leads = len(rows)
+    booked_total = status_counts["future_booking"] + status_counts["booked_pending_show"] + status_counts["showed"]
+    showed_total = status_counts["showed"]
+    return {
+        "as_of_date": as_of_date.isoformat(),
+        "total_leads": total_leads,
+        "booked_total": booked_total,
+        "showed_total": showed_total,
+        "future_booking": status_counts["future_booking"],
+        "booked_pending_show": status_counts["booked_pending_show"],
+        "no_booking": status_counts["no_booking"],
+        "new_bookings_on_report_date": new_bookings_on_report_date,
+        "new_showed_on_report_date": new_showed_on_report_date,
+        "lead_to_booking_pct": safe_pct(booked_total, total_leads),
+        "booking_to_show_pct": safe_pct(showed_total, booked_total),
+        "rows": rows,
+    }
+
+
+def _group_appointments_by_contact(appointments: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for appointment in appointments:
+        if appointment.get("deleted"):
+            continue
+        contact_id = _extract_appointment_contact_id(appointment)
+        if not contact_id:
+            continue
+        grouped.setdefault(contact_id, []).append(appointment)
+    for contact_appointments in grouped.values():
+        contact_appointments.sort(
+            key=lambda item: (
+                _extract_appointment_date(item) or date.max,
+                str(item.get("startTime") or item.get("dateAdded") or ""),
+            )
+        )
+    return grouped
+
+
+def _first_booking_appointment(appointments: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for appointment in appointments:
+        if _extract_appointment_date(appointment) is not None:
+            return appointment
+    return None
+
+
+def _first_showed_appointment(appointments: list[dict[str, Any]], *, as_of_date: date) -> dict[str, Any] | None:
+    for appointment in appointments:
+        appointment_date = _extract_appointment_date(appointment)
+        if appointment_date is None or appointment_date > as_of_date:
+            continue
+        status = _appointment_status(appointment)
+        if status in SHOWED_STATUSES:
+            return appointment
+    return None
+
+
+def _appointment_status(appointment: dict[str, Any]) -> str:
+    return str(
+        appointment.get("appointmentStatus")
+        or appointment.get("status")
+        or appointment.get("calendarStatus")
+        or appointment.get("appoinmentStatus")
+        or ""
+    ).strip().lower()
+
+
+def _extract_appointment_created_date(appointment: dict[str, Any] | None) -> date | None:
+    if not appointment:
+        return None
+    for key in ("dateAdded", "createdAt", "created_at"):
+        raw = appointment.get(key)
+        if not raw:
+            continue
+        raw_text = str(raw).strip().replace("Z", "+00:00")
+        for candidate in (raw_text, raw_text.replace(" ", "T"), raw_text[:10]):
+            try:
+                return date.fromisoformat(candidate[:10])
+            except ValueError:
+                continue
+    return None
 
 
 def _build_ghl_adset_source_rows(

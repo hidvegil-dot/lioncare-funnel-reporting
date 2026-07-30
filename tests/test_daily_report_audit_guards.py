@@ -142,6 +142,52 @@ class DailyReportAuditGuardTest(unittest.TestCase):
             report["ghl"]["by_adset"],
         )
 
+    def test_daily_report_tracks_lead_cohort_progress_without_duplicates(self) -> None:
+        report = build_daily_decision_report(
+            report_date=date(2026, 7, 29),
+            summary={
+                "new_leads": 2,
+                "booked_leads": 0,
+                "showed_leads": 0,
+                "closed_leads": 0,
+            },
+            ga4_data=None,
+            meta_data={"summary": {}, "adsets": []},
+            contacts=[
+                {"id": "contact_1", "name": "Lead One", "lead_date": date(2026, 7, 29), "raw": {}},
+                {"id": "contact_2", "name": "Lead Two", "lead_date": date(2026, 7, 29), "raw": {}},
+            ],
+            current_crm_contacts=[],
+            current_crm_appointments=[
+                {
+                    "contactId": "contact_1",
+                    "startTime": "2026-07-31T10:00:00+02:00",
+                    "dateAdded": "2026-07-29T12:00:00+02:00",
+                    "appointmentStatus": "confirmed",
+                },
+                {
+                    "contactId": "contact_1",
+                    "startTime": "2026-08-02T10:00:00+02:00",
+                    "dateAdded": "2026-07-30T12:00:00+02:00",
+                    "appointmentStatus": "confirmed",
+                },
+                {
+                    "contactId": "contact_2",
+                    "startTime": "2026-07-29T10:00:00+02:00",
+                    "dateAdded": "2026-07-29T08:00:00+02:00",
+                    "appointmentStatus": "showed",
+                },
+            ],
+        )
+
+        cohort = report["ghl"]["lead_cohort"]
+        self.assertEqual(2, cohort["total_leads"])
+        self.assertEqual(2, cohort["booked_total"])
+        self.assertEqual(1, cohort["showed_total"])
+        self.assertEqual(2, cohort["new_bookings_on_report_date"])
+        self.assertEqual(1, cohort["new_showed_on_report_date"])
+        self.assertEqual(["Lead One", "Lead Two"], [row["name"] for row in cohort["rows"]])
+
     def test_daily_report_index_contains_drive_links_and_funnel_type(self) -> None:
         rows = build_historical_rows(
             report_date=date(2026, 6, 4),
