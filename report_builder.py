@@ -37,6 +37,47 @@ MEETING_FIELDS = [
     "closed_3plus_meetings",
 ]
 
+DAILY_LEAD_CSV_COLUMNS = [
+    "report_date",
+    "lead_id",
+    "contact_id",
+    "contact_name",
+    "email",
+    "phone",
+    "created_date",
+    "lead_date",
+    "source",
+    "campaign_id",
+    "campaign_name",
+    "adset_id",
+    "adset_name",
+    "ad_id",
+    "ad_name",
+    "meta_match_level",
+    "spend",
+    "impressions",
+    "clicks",
+    "link_click",
+    "landing_page_views",
+    "meta_leads",
+    "meta_form_leads",
+    "registration_leads",
+    "landing_page_url",
+    "lead_status",
+    "cohort_status",
+    "cohort_status_label",
+    "booking_date",
+    "booking_created_date",
+    "showed_date",
+    "contract_date",
+    "opportunity_id",
+    "opportunity_status",
+    "opportunity_stage",
+    "opportunity_pipeline_id",
+    "opportunity_created_at",
+    "opportunity_updated_at",
+]
+
 SHOWED_STATUSES = {
     "showed",
     "show",
@@ -1301,6 +1342,242 @@ def _build_daily_lead_cohort_progress(
     }
 
 
+def build_daily_lead_csv_rows(
+    *,
+    report_date: date,
+    contacts: list[dict[str, Any]],
+    appointments: list[dict[str, Any]],
+    opportunities: list[dict[str, Any]] | None = None,
+    meta_data: dict[str, Any] | None = None,
+    as_of_date: date | None = None,
+) -> list[dict[str, Any]]:
+    as_of_date = as_of_date or date.today()
+    cohort_contacts = [
+        contact
+        for contact in contacts
+        if isinstance(_contact_lead_date(contact), date) and _contact_lead_date(contact) == report_date
+    ]
+    appointments_by_contact = _group_appointments_by_contact(appointments)
+    opportunities_by_contact = _group_opportunities_by_contact(opportunities or [])
+    meta_lookup = _build_daily_meta_lookup(meta_data or {})
+
+    rows: list[dict[str, Any]] = []
+    for contact in sorted(cohort_contacts, key=lambda item: str(item.get("id") or "")):
+        contact_id = str(contact.get("id") or "").strip()
+        contact_appointments = appointments_by_contact.get(contact_id, [])
+        booking = _first_booking_appointment(contact_appointments)
+        showed = _first_showed_appointment(contact_appointments, as_of_date=as_of_date)
+        booking_date = _extract_appointment_date(booking) if booking else None
+        showed_date = _extract_appointment_date(showed) if showed else None
+        booking_created_date = _extract_appointment_created_date(booking) if booking else None
+        cohort_status, cohort_status_label = _daily_cohort_status(
+            booking_date=booking_date,
+            showed_date=showed_date,
+            as_of_date=as_of_date,
+        )
+        attribution = _extract_contact_meta_attribution(contact)
+        meta_row, meta_match_level = _match_contact_meta_row(attribution=attribution, lookup=meta_lookup)
+        opportunity = _select_contact_opportunity(opportunities_by_contact.get(contact_id, []))
+
+        row = {column: "" for column in DAILY_LEAD_CSV_COLUMNS}
+        row.update(
+            {
+                "report_date": report_date.isoformat(),
+                "lead_id": contact_id,
+                "contact_id": contact_id,
+                "contact_name": contact.get("name") or contact.get("email") or contact.get("phone") or contact_id,
+                "email": contact.get("email") or "",
+                "phone": contact.get("phone") or "",
+                "created_date": _format_date_value(contact.get("created_date")),
+                "lead_date": _format_date_value(_contact_lead_date(contact)),
+                "source": contact.get("source") or attribution.get("source") or "",
+                "campaign_id": attribution.get("campaign_id") or _meta_value(meta_row, "campaign_id"),
+                "campaign_name": _meta_value(meta_row, "campaign_name") or attribution.get("campaign_name"),
+                "adset_id": attribution.get("adset_id") or _meta_value(meta_row, "adset_id"),
+                "adset_name": _meta_value(meta_row, "adset_name") or attribution.get("adset_name"),
+                "ad_id": attribution.get("ad_id") or _meta_value(meta_row, "ad_id"),
+                "ad_name": _meta_value(meta_row, "ad_name") or attribution.get("ad_name"),
+                "meta_match_level": meta_match_level,
+                "spend": _meta_value(meta_row, "spend", default=0.0),
+                "impressions": _meta_value(meta_row, "impressions", default=0),
+                "clicks": _meta_value(meta_row, "clicks", default=0),
+                "link_click": _meta_value(meta_row, "link_click", default=0),
+                "landing_page_views": _meta_value(meta_row, "landing_page_views", default=0),
+                "meta_leads": _meta_value(meta_row, "leads", default=0),
+                "meta_form_leads": _meta_value(meta_row, "meta_form_leads", default=0),
+                "registration_leads": _meta_value(meta_row, "registration_leads", default=0),
+                "landing_page_url": contact.get("landing_page_url") or attribution.get("landing_page_url") or "",
+                "lead_status": contact.get("lead_status") or "",
+                "cohort_status": cohort_status,
+                "cohort_status_label": cohort_status_label,
+                "booking_date": _format_date_value(booking_date),
+                "booking_created_date": _format_date_value(booking_created_date),
+                "showed_date": _format_date_value(showed_date),
+                "contract_date": _format_date_value(contact.get("close_date")),
+                "opportunity_id": _opportunity_value(opportunity, "id"),
+                "opportunity_status": _opportunity_value(opportunity, "status"),
+                "opportunity_stage": _opportunity_stage_label(opportunity),
+                "opportunity_pipeline_id": _opportunity_pipeline_id(opportunity) if opportunity else "",
+                "opportunity_created_at": _opportunity_value(opportunity, "createdAt", "created_at", "dateAdded"),
+                "opportunity_updated_at": _opportunity_value(opportunity, "updatedAt", "updated_at", "dateUpdated"),
+            }
+        )
+        rows.append(row)
+
+    return rows
+
+
+def _daily_cohort_status(
+    *,
+    booking_date: date | None,
+    showed_date: date | None,
+    as_of_date: date,
+) -> tuple[str, str]:
+    if showed_date:
+        return "showed", "Megtartott meet"
+    if booking_date and booking_date > as_of_date:
+        return "future_booking", "Jövőbeni meet"
+    if booking_date:
+        return "booked_pending_show", "Foglalva, showed még nincs"
+    return "no_booking", "Nincs foglalás"
+
+
+def _build_daily_meta_lookup(meta_data: dict[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
+    lookup = {"ad": {}, "adset": {}, "campaign": {}, "campaign_name": {}}
+    for row in meta_data.get("ads") or []:
+        _index_meta_row(lookup["ad"], row, "ad_id")
+    for row in meta_data.get("adsets") or []:
+        _index_meta_row(lookup["adset"], row, "adset_id")
+    for row in meta_data.get("campaigns") or []:
+        _index_meta_row(lookup["campaign"], row, "campaign_id")
+        name = str(row.get("campaign_name") or row.get("name") or "").strip().lower()
+        if name:
+            lookup["campaign_name"][name] = row
+    return lookup
+
+
+def _index_meta_row(target: dict[str, dict[str, Any]], row: dict[str, Any], key: str) -> None:
+    identifier = str(row.get(key) or row.get("id") or "").strip()
+    if identifier:
+        target[identifier] = row
+
+
+def _match_contact_meta_row(
+    *,
+    attribution: dict[str, str],
+    lookup: dict[str, dict[str, dict[str, Any]]],
+) -> tuple[dict[str, Any] | None, str]:
+    for level, key in (("ad", "ad_id"), ("adset", "adset_id"), ("campaign", "campaign_id")):
+        identifier = attribution.get(key)
+        if identifier and identifier in lookup[level]:
+            return lookup[level][identifier], level
+    campaign_name = attribution.get("campaign_name", "").strip().lower()
+    if campaign_name and campaign_name in lookup["campaign_name"]:
+        return lookup["campaign_name"][campaign_name], "campaign"
+    return None, "none"
+
+
+def _extract_contact_meta_attribution(contact: dict[str, Any]) -> dict[str, str]:
+    raw = contact.get("raw") if isinstance(contact.get("raw"), dict) else contact
+    attribution_data: dict[str, str] = {}
+    for attribution in _iter_contact_attributions(raw):
+        values = {
+            "campaign_id": _first_present(attribution, "campaignId", "campaign_id"),
+            "campaign_name": _first_present(attribution, "campaignName", "campaign_name", "utmCampaign", "utm_campaign"),
+            "adset_id": _first_present(attribution, "adsetId", "adset_id", "utmTerm", "utm_term"),
+            "adset_name": _first_present(attribution, "adsetName", "adset_name"),
+            "ad_id": _first_present(attribution, "adId", "ad_id", "utmContent", "utm_content"),
+            "ad_name": _first_present(attribution, "adName", "ad_name"),
+            "source": _first_present(attribution, "source", "utmSource", "utm_source"),
+        }
+        raw_url = attribution.get("url") or attribution.get("utmUrl")
+        query_values = {
+            "campaign_name": _extract_query_value(raw_url, "utm_campaign"),
+            "adset_id": _extract_query_value(raw_url, "utm_term"),
+            "ad_id": _extract_query_value(raw_url, "utm_content"),
+            "source": _extract_query_value(raw_url, "utm_source"),
+            "landing_page_url": str(raw_url).strip() if raw_url else "",
+        }
+        for source_values in (values, query_values):
+            for key, value in source_values.items():
+                if value and not attribution_data.get(key):
+                    attribution_data[key] = str(value).strip()
+    return attribution_data
+
+
+def _meta_value(row: dict[str, Any] | None, key: str, default: Any = "") -> Any:
+    if not row:
+        return default
+    value = row.get(key)
+    return default if value in (None, "") else value
+
+
+def _format_date_value(value: Any) -> str:
+    if isinstance(value, date):
+        return value.isoformat()
+    if value in (None, ""):
+        return ""
+    return str(value)
+
+
+def _group_opportunities_by_contact(opportunities: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for opportunity in opportunities:
+        contact_id = _opportunity_contact_id(opportunity)
+        if contact_id:
+            grouped.setdefault(contact_id, []).append(opportunity)
+    return grouped
+
+
+def _opportunity_contact_id(opportunity: dict[str, Any]) -> str:
+    for key in ("contactId", "contact_id", "contactID"):
+        value = opportunity.get(key)
+        normalized = str(value or "").strip()
+        if normalized:
+            return normalized
+    contact = opportunity.get("contact")
+    if isinstance(contact, dict):
+        return str(contact.get("id") or contact.get("_id") or "").strip()
+    return ""
+
+
+def _select_contact_opportunity(opportunities: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not opportunities:
+        return None
+    status_priority = {"open": 0, "won": 1, "lost": 2}
+    return sorted(
+        opportunities,
+        key=lambda item: (
+            status_priority.get(str(item.get("status") or "").strip().lower(), 9),
+            str(item.get("updatedAt") or item.get("updated_at") or item.get("dateUpdated") or ""),
+            str(item.get("createdAt") or item.get("created_at") or item.get("dateAdded") or ""),
+        ),
+        reverse=False,
+    )[0]
+
+
+def _opportunity_value(opportunity: dict[str, Any] | None, *keys: str) -> str:
+    if not opportunity:
+        return ""
+    for key in keys:
+        value = opportunity.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def _opportunity_stage_label(opportunity: dict[str, Any] | None) -> str:
+    if not opportunity:
+        return ""
+    for key in ("pipelineStageName", "stageName", "stage"):
+        value = opportunity.get(key)
+        if isinstance(value, dict):
+            value = value.get("name") or value.get("id") or value.get("_id")
+        if value not in (None, ""):
+            return str(value)
+    return _opportunity_value(opportunity, "pipelineStageId", "pipeline_stage_id")
+
+
 def _group_appointments_by_contact(appointments: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for appointment in appointments:
@@ -1487,6 +1764,14 @@ def write_csv_report(csv_path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({field: row.get(field) for field in fieldnames})
+
+
+def write_daily_lead_csv_report(csv_path: Path, rows: list[dict[str, Any]]) -> None:
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=DAILY_LEAD_CSV_COLUMNS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in DAILY_LEAD_CSV_COLUMNS})
 
 
 def write_weekly_comparison_csv(csv_path: Path, comparison: dict[str, Any]) -> None:

@@ -10,10 +10,13 @@ from ghl_client import GHLClient
 from google_sheets_client import _column_letter
 from parser import DAILY_REPORT_INDEX_COLUMNS, build_historical_rows
 from report_builder import (
+    DAILY_LEAD_CSV_COLUMNS,
     _build_current_crm_by_opportunity_owner_rows,
     _build_current_crm_by_owner_rows,
     _evaluate_meta_adset,
     build_daily_decision_report,
+    build_daily_lead_csv_rows,
+    write_daily_lead_csv_report,
 )
 from scripts.check_daily_report_index import _daily_report_exists, _fetch_daily_report_index_values
 from scripts import monitor_github_actions
@@ -199,6 +202,101 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertEqual(2, cohort["new_bookings_on_report_date"])
         self.assertEqual(1, cohort["new_showed_on_report_date"])
         self.assertEqual(["Lead One", "Lead Two"], [row["name"] for row in cohort["rows"]])
+
+    def test_daily_lead_csv_contains_stable_cohort_attribution_columns(self) -> None:
+        rows = build_daily_lead_csv_rows(
+            report_date=date(2026, 8, 5),
+            contacts=[
+                {
+                    "id": "contact_1",
+                    "name": "Lead One",
+                    "email": "lead@example.com",
+                    "phone": "06301234567",
+                    "created_date": date(2026, 8, 5),
+                    "lead_date": date(2026, 8, 5),
+                    "close_date": date(2026, 8, 20),
+                    "lead_status": "closed",
+                    "source": "Facebook",
+                    "landing_page_url": "https://lioncare.hu/webinar",
+                    "raw": {
+                        "attributionSource": {
+                            "url": "https://lioncare.hu/webinar?utm_source=facebook&utm_campaign=Webinar&utm_term=adset_1&utm_content=ad_1"
+                        }
+                    },
+                }
+            ],
+            appointments=[
+                {
+                    "contactId": "contact_1",
+                    "startTime": "2026-08-06T18:00:00+02:00",
+                    "dateAdded": "2026-08-05T12:00:00+02:00",
+                    "appointmentStatus": "showed",
+                }
+            ],
+            opportunities=[
+                {
+                    "id": "opp_1",
+                    "contactId": "contact_1",
+                    "status": "open",
+                    "pipelineStageName": "Visszahívást kért",
+                    "pipelineId": "pipeline_1",
+                    "createdAt": "2026-08-05T12:10:00+02:00",
+                    "updatedAt": "2026-08-05T12:20:00+02:00",
+                }
+            ],
+            meta_data={
+                "ads": [
+                    {
+                        "campaign_id": "campaign_1",
+                        "campaign_name": "Webinar",
+                        "adset_id": "adset_1",
+                        "adset_name": "LC webinar adset",
+                        "ad_id": "ad_1",
+                        "ad_name": "LC webinar ad",
+                        "spend": 1500.0,
+                        "impressions": 1000,
+                        "clicks": 80,
+                        "link_click": 70,
+                        "landing_page_views": 50,
+                        "leads": 4,
+                        "meta_form_leads": 4,
+                        "registration_leads": 0,
+                    }
+                ],
+                "adsets": [],
+                "campaigns": [],
+            },
+            as_of_date=date(2026, 8, 7),
+        )
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(DAILY_LEAD_CSV_COLUMNS, list(rows[0].keys()))
+        self.assertEqual("contact_1", rows[0]["lead_id"])
+        self.assertEqual("2026-08-05", rows[0]["lead_date"])
+        self.assertEqual("Webinar", rows[0]["campaign_name"])
+        self.assertEqual("adset_1", rows[0]["adset_id"])
+        self.assertEqual("LC webinar ad", rows[0]["ad_name"])
+        self.assertEqual("ad", rows[0]["meta_match_level"])
+        self.assertEqual(1500.0, rows[0]["spend"])
+        self.assertEqual(1000, rows[0]["impressions"])
+        self.assertEqual(80, rows[0]["clicks"])
+        self.assertEqual(50, rows[0]["landing_page_views"])
+        self.assertEqual("showed", rows[0]["cohort_status"])
+        self.assertEqual("2026-08-06", rows[0]["booking_date"])
+        self.assertEqual("2026-08-06", rows[0]["showed_date"])
+        self.assertEqual("2026-08-20", rows[0]["contract_date"])
+        self.assertEqual("opp_1", rows[0]["opportunity_id"])
+        self.assertEqual("open", rows[0]["opportunity_status"])
+
+    def test_daily_lead_csv_writes_same_header_when_empty(self) -> None:
+        csv_path = REPO_ROOT / ".tmp_daily_lead_csv_test.csv"
+        try:
+            write_daily_lead_csv_report(csv_path=csv_path, rows=[])
+            header = csv_path.read_text(encoding="utf-8").splitlines()[0].split(",")
+            self.assertEqual(DAILY_LEAD_CSV_COLUMNS, header)
+        finally:
+            if csv_path.exists():
+                csv_path.unlink()
 
     def test_daily_report_index_contains_drive_links_and_funnel_type(self) -> None:
         rows = build_historical_rows(

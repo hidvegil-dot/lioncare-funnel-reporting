@@ -16,6 +16,7 @@ from report_storage import persist_daily_report_history
 from report_builder import (
     build_comparison_quick_snapshot,
     build_daily_decision_report,
+    build_daily_lead_csv_rows,
     build_ga4_landing_comparison,
     build_landing_lead_cards,
     build_period_ghl_status_comparison,
@@ -27,6 +28,7 @@ from report_builder import (
     summarize_period,
     write_comparison_pdf,
     write_csv_report,
+    write_daily_lead_csv_report,
     write_html_report,
     write_weekly_comparison_csv,
     write_weekly_comparison_html,
@@ -292,6 +294,7 @@ def main() -> None:
                 if strict_data:
                     raise
         decision_report = None
+        daily_lead_csv_rows = None
         if args.report_type == "daily":
             decision_report = build_daily_decision_report(
                 report_date=start_date,
@@ -302,6 +305,13 @@ def main() -> None:
                 current_crm_contacts=current_crm_contacts or contacts,
                 current_crm_opportunities=current_crm_opportunities,
                 current_crm_appointments=current_crm_appointments,
+            )
+            daily_lead_csv_rows = build_daily_lead_csv_rows(
+                report_date=start_date,
+                contacts=contacts,
+                appointments=current_crm_appointments or [],
+                opportunities=current_crm_opportunities or [],
+                meta_data=meta_data,
             )
 
         if args.report_type == "weekly_compare":
@@ -537,7 +547,7 @@ def main() -> None:
             csv_path = output_dir / "daily_funnel_report.csv"
             html_path = output_dir / "daily_funnel_report.html"
             pdf_path = None
-            write_csv_report(csv_path=csv_path, rows=rows)
+            write_daily_lead_csv_report(csv_path=csv_path, rows=daily_lead_csv_rows or [])
             write_html_report(
                 html_path=html_path,
                 rows=rows,
