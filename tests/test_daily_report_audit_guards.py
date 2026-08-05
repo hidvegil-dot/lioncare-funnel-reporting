@@ -381,6 +381,15 @@ class DailyReportAuditGuardTest(unittest.TestCase):
             },
             exported_at="2026-08-05T09:00:00+02:00",
             account_id="act_120000000000000000",
+            appointments=[
+                {
+                    "id": "appt_1",
+                    "contactId": "lead_1",
+                    "dateAdded": "2026-08-05T11:00:00+02:00",
+                    "startTime": "2026-08-06T18:00:00+02:00",
+                    "appointmentStatus": "confirmed",
+                }
+            ],
         )
 
         self.assertEqual(DAILY_AD_PERFORMANCE_COLUMNS, list(result["ad_rows"][0].keys()))
@@ -394,6 +403,8 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertEqual("unattributed", lead_2["attribution_status"])
         self.assertEqual("", lead_2["ad_id"])
         self.assertEqual("datetime", result["lead_rows"][0]["lead_created_precision"])
+        self.assertEqual(1, len(result["event_rows"]))
+        self.assertEqual("booking_created", result["event_rows"][0]["event_type"])
 
     def test_daily_split_export_rejects_damaged_meta_id(self) -> None:
         with self.assertRaises(ExportValidationError):

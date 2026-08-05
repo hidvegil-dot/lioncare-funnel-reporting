@@ -61,6 +61,7 @@ def main() -> None:
     end_date = date.fromisoformat(args.end_date) if args.end_date else available_dates[-1]
     exported_at = current_budapest_timestamp()
     meta_ad_account_id = (args.meta_ad_account_id or os.getenv("META_AD_ACCOUNT_ID", "")).strip().removeprefix("act_")
+    corrected_root = daily_root / "corrected" / "2026-08"
     qa_rows = []
     missing_dates = []
 
@@ -97,7 +98,6 @@ def main() -> None:
             cursor += timedelta(days=1)
             continue
 
-        corrected_dir = source_path.parent / "corrected"
         result = build_split_exports_from_combined_csv(
             source_path=source_path,
             report_date=cursor,
@@ -105,7 +105,7 @@ def main() -> None:
             account_id=meta_ad_account_id,
         )
         ad_path, lead_path, event_path = write_daily_split_csvs(
-            output_dir=corrected_dir,
+            output_dir=corrected_root,
             report_date=cursor,
             ad_rows=result["ad_rows"],
             lead_rows=result["lead_rows"],
@@ -118,15 +118,22 @@ def main() -> None:
         qa_rows.append({field: qa.get(field, "") for field in BACKFILL_QA_COLUMNS})
         cursor += timedelta(days=1)
 
-    qa_path = daily_root / "corrected" / "backfill_qa_report.csv"
+    qa_path = corrected_root / "backfill_qa_report.csv"
     write_backfill_qa_report(qa_path, qa_rows)
-    write_schema_json(daily_root / "corrected" / "schema.json")
+    write_schema_json(corrected_root / "schema.json")
     dictionary_source = Path(__file__).resolve().parents[1] / "docs" / "daily_funnel_export_data_dictionary.md"
     if dictionary_source.exists():
-        (daily_root / "corrected" / "data_dictionary.md").write_text(
+        (corrected_root / "data_dictionary.md").write_text(
             dictionary_source.read_text(encoding="utf-8"),
             encoding="utf-8",
         )
+    source_mapping = Path(__file__).resolve().parents[1] / "docs" / "daily_funnel_source_mapping.md"
+    if source_mapping.exists():
+        (corrected_root / "source_mapping.md").write_text(
+            source_mapping.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    _write_august_summary(corrected_root / "august_backfill_summary.md", qa_rows)
 
     print(f"Processed dates: {', '.join(row['date'] for row in qa_rows)}")
     print(f"Missing dates: {', '.join(missing_dates) if missing_dates else 'none'}")
@@ -155,6 +162,21 @@ def _date_from_source_path(path: Path) -> date | None:
         return datetime.strptime(raw, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _write_august_summary(path: Path, qa_rows: list[dict[str, object]]) -> None:
+    generated = [str(row.get("date")) for row in qa_rows if str(row.get("processing_status")) not in {"insufficient_source", ""}]
+    insufficient = [str(row.get("date")) for row in qa_rows if row.get("processing_status") == "insufficient_source"]
+    lines = [
+        "# August 2026 Corrected Backfill Summary",
+        "",
+        f"Generated dates: {', '.join(generated) if generated else 'none'}",
+        f"Insufficient source dates: {', '.join(insufficient) if insufficient else 'none'}",
+        "",
+        "This backfill is idempotent for the same source files and writes only into corrected/2026-08.",
+        "Aggregate-only source days are documented in QA and do not receive synthetic output files.",
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
