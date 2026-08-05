@@ -6,6 +6,11 @@ from unittest import mock
 from datetime import date, datetime
 from pathlib import Path
 
+from daily_split_exports import (
+    DAILY_AD_PERFORMANCE_COLUMNS,
+    LEAD_COHORT_COLUMNS,
+    build_split_exports_from_daily_lead_rows,
+)
 from ghl_client import GHLClient
 from google_sheets_client import _column_letter
 from parser import DAILY_REPORT_INDEX_COLUMNS, build_historical_rows
@@ -297,6 +302,94 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         finally:
             if csv_path.exists():
                 csv_path.unlink()
+
+    def test_daily_split_exports_dedupe_ads_and_leads(self) -> None:
+        result = build_split_exports_from_daily_lead_rows(
+            report_date=date(2026, 8, 5),
+            daily_lead_rows=[
+                {
+                    "lead_id": "lead_1",
+                    "created_at": "2026-08-05T10:00:00+02:00",
+                    "source": "Lioncare KATA",
+                    "campaign_id": "campaign_1",
+                    "campaign_name": "Campaign",
+                    "adset_id": "adset_1",
+                    "adset_name": "Adset",
+                    "ad_id": "ad_1",
+                    "ad_name": "Ad",
+                    "meta_match_level": "ad",
+                    "booking_created_at": "2026-08-05T11:00:00+02:00",
+                    "appointment_at": "2026-08-06T18:00:00+02:00",
+                    "lead_status": "booked",
+                },
+                {
+                    "lead_id": "lead_1",
+                    "created_at": "2026-08-05T10:00:00+02:00",
+                    "source": "Lioncare KATA",
+                    "campaign_id": "campaign_1",
+                    "campaign_name": "Campaign",
+                    "adset_id": "adset_1",
+                    "adset_name": "Adset",
+                    "ad_id": "ad_1",
+                    "ad_name": "Ad",
+                    "meta_match_level": "ad",
+                    "lead_status": "booked",
+                },
+                {
+                    "lead_id": "lead_2",
+                    "created_at": "2026-08-05T12:00:00+02:00",
+                    "source": "Lioncare KATA",
+                    "meta_match_level": "none",
+                    "lead_status": "new",
+                },
+            ],
+            meta_data={
+                "ads": [
+                    {
+                        "campaign_id": "campaign_1",
+                        "campaign_name": "Campaign",
+                        "adset_id": "adset_1",
+                        "adset_name": "Adset",
+                        "ad_id": "ad_1",
+                        "ad_name": "Ad",
+                        "spend": 1200,
+                        "impressions": 500,
+                        "reach": 450,
+                        "clicks": 20,
+                        "link_click": 12,
+                        "landing_page_views": 9,
+                        "registration_leads": 2,
+                    },
+                    {
+                        "campaign_id": "campaign_1",
+                        "campaign_name": "Campaign",
+                        "adset_id": "adset_2",
+                        "adset_name": "Adset zero",
+                        "ad_id": "ad_zero",
+                        "ad_name": "Zero ad",
+                        "spend": 0,
+                        "impressions": 0,
+                        "reach": 0,
+                        "clicks": 0,
+                        "link_click": 0,
+                        "landing_page_views": 0,
+                        "registration_leads": 0,
+                    },
+                ]
+            },
+            exported_at="2026-08-05T09:00:00+02:00",
+        )
+
+        self.assertEqual(DAILY_AD_PERFORMANCE_COLUMNS, list(result["ad_rows"][0].keys()))
+        self.assertEqual(2, len(result["ad_rows"]))
+        self.assertEqual({"ad_1", "ad_zero"}, {row["ad_id"] for row in result["ad_rows"]})
+        self.assertEqual(1200, result["qa"]["deduped_spend_huf"])
+        self.assertEqual(LEAD_COHORT_COLUMNS, list(result["lead_rows"][0].keys()))
+        self.assertEqual(2, len(result["lead_rows"]))
+        self.assertEqual("lead_1:2", result["qa"]["duplicate_lead_ids"])
+        lead_2 = [row for row in result["lead_rows"] if row["lead_id"] == "lead_2"][0]
+        self.assertEqual("unattributed", lead_2["attribution_status"])
+        self.assertEqual("", lead_2["ad_id"])
 
     def test_daily_report_index_contains_drive_links_and_funnel_type(self) -> None:
         rows = build_historical_rows(

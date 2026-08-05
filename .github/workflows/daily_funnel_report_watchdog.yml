@@ -128,6 +128,8 @@ jobs:
         run: |
           test -s daily_funnel_report.html
           test -s daily_funnel_report.csv
+          test -s "daily_ad_performance_${REPORT_DATE}.csv"
+          test -s "lead_cohort_${REPORT_DATE}.csv"
           test -s report_run.log
       - name: Upload reports to OneDrive
         if: steps.budapest_time.outputs.run_watchdog == 'true' && steps.report_index.outputs.exists != 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
@@ -142,8 +144,12 @@ jobs:
           rclone mkdir "onedrive:${daily_path}"
           rclone copyto "archive/daily_funnel_report_${REPORT_DATE}.html" "onedrive:${daily_path}/daily_funnel_report_${REPORT_DATE}.html"
           rclone copyto "archive/daily_funnel_report_${REPORT_DATE}.csv" "onedrive:${daily_path}/daily_funnel_report_${REPORT_DATE}.csv"
+          rclone copyto "daily_ad_performance_${REPORT_DATE}.csv" "onedrive:${daily_path}/daily_ad_performance_${REPORT_DATE}.csv"
+          rclone copyto "lead_cohort_${REPORT_DATE}.csv" "onedrive:${daily_path}/lead_cohort_${REPORT_DATE}.csv"
           rclone copyto "archive/daily_funnel_report_${REPORT_DATE}.html" "onedrive:${daily_path}/latest_daily_funnel_report.html"
           rclone copyto "archive/daily_funnel_report_${REPORT_DATE}.csv" "onedrive:${daily_path}/latest_daily_funnel_report.csv"
+          rclone copyto "daily_ad_performance_${REPORT_DATE}.csv" "onedrive:${daily_path}/latest_daily_ad_performance.csv"
+          rclone copyto "lead_cohort_${REPORT_DATE}.csv" "onedrive:${daily_path}/latest_lead_cohort.csv"
       - name: Re-check daily report index
         if: steps.budapest_time.outputs.run_watchdog == 'true' && steps.report_index.outputs.exists != 'true'
         run: python scripts/check_daily_report_index.py --report-date "$REPORT_DATE"
@@ -156,4 +162,6 @@ jobs:
           path: |
             daily_funnel_report.html
             daily_funnel_report.csv
+            daily_ad_performance_*.csv
+            lead_cohort_*.csv
             report_run.log

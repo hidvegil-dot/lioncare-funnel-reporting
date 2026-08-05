@@ -133,6 +133,9 @@ jobs:
         run: |
           test -s daily_funnel_report.html
           test -s daily_funnel_report.csv
+          report_date="${REPORT_DATE:-$(TZ=Europe/Budapest date -d yesterday +%F)}"
+          test -s "daily_ad_performance_${report_date}.csv"
+          test -s "lead_cohort_${report_date}.csv"
           test -s report_run.log
       - name: Upload reports to OneDrive
         if: steps.budapest_time.outputs.run_report == 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
@@ -148,8 +151,12 @@ jobs:
           rclone mkdir "onedrive:${daily_path}"
           rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/daily_funnel_report_${report_date}.html"
           rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/daily_funnel_report_${report_date}.csv"
+          rclone copyto "daily_ad_performance_${report_date}.csv" "onedrive:${daily_path}/daily_ad_performance_${report_date}.csv"
+          rclone copyto "lead_cohort_${report_date}.csv" "onedrive:${daily_path}/lead_cohort_${report_date}.csv"
           rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/latest_daily_funnel_report.html"
           rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/latest_daily_funnel_report.csv"
+          rclone copyto "daily_ad_performance_${report_date}.csv" "onedrive:${daily_path}/latest_daily_ad_performance.csv"
+          rclone copyto "lead_cohort_${report_date}.csv" "onedrive:${daily_path}/latest_lead_cohort.csv"
       - name: Upload report artifacts
         if: steps.budapest_time.outputs.run_report == 'true' && always()
         uses: actions/upload-artifact@v4
@@ -159,4 +166,6 @@ jobs:
           path: |
             daily_funnel_report.html
             daily_funnel_report.csv
+            daily_ad_performance_*.csv
+            lead_cohort_*.csv
             report_run.log

@@ -12,6 +12,11 @@ from email_sender import EmailConfig, send_report_email
 from ga4_client import GA4Client, GA4Config
 from ghl_client import GHLClient, GHLConfig
 from meta_ads_client import MetaAdsClient, MetaAdsConfig
+from daily_split_exports import (
+    build_split_exports_from_daily_lead_rows,
+    current_budapest_timestamp,
+    write_daily_split_csvs,
+)
 from report_storage import persist_daily_report_history
 from report_builder import (
     build_comparison_quick_snapshot,
@@ -295,6 +300,7 @@ def main() -> None:
                     raise
         decision_report = None
         daily_lead_csv_rows = None
+        daily_split_exports = None
         if args.report_type == "daily":
             decision_report = build_daily_decision_report(
                 report_date=start_date,
@@ -312,6 +318,12 @@ def main() -> None:
                 appointments=current_crm_appointments or [],
                 opportunities=current_crm_opportunities or [],
                 meta_data=meta_data,
+            )
+            daily_split_exports = build_split_exports_from_daily_lead_rows(
+                report_date=start_date,
+                daily_lead_rows=daily_lead_csv_rows,
+                meta_data=meta_data,
+                exported_at=current_budapest_timestamp(),
             )
 
         if args.report_type == "weekly_compare":
@@ -548,6 +560,13 @@ def main() -> None:
             html_path = output_dir / "daily_funnel_report.html"
             pdf_path = None
             write_daily_lead_csv_report(csv_path=csv_path, rows=daily_lead_csv_rows or [])
+            if daily_split_exports:
+                write_daily_split_csvs(
+                    output_dir=output_dir,
+                    report_date=start_date,
+                    ad_rows=daily_split_exports["ad_rows"],
+                    lead_rows=daily_split_exports["lead_rows"],
+                )
             write_html_report(
                 html_path=html_path,
                 rows=rows,

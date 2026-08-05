@@ -5,10 +5,11 @@ import math
 import os
 import statistics
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from reportlab.lib import colors
@@ -45,6 +46,7 @@ DAILY_LEAD_CSV_COLUMNS = [
     "email",
     "phone",
     "created_date",
+    "created_at",
     "lead_date",
     "source",
     "campaign_id",
@@ -68,8 +70,12 @@ DAILY_LEAD_CSV_COLUMNS = [
     "cohort_status_label",
     "booking_date",
     "booking_created_date",
+    "booking_created_at",
+    "appointment_at",
     "showed_date",
+    "showed_at",
     "contract_date",
+    "contract_created_at",
     "opportunity_id",
     "opportunity_status",
     "opportunity_stage",
@@ -1370,6 +1376,9 @@ def build_daily_lead_csv_rows(
         booking_date = _extract_appointment_date(booking) if booking else None
         showed_date = _extract_appointment_date(showed) if showed else None
         booking_created_date = _extract_appointment_created_date(booking) if booking else None
+        booking_at = _extract_appointment_datetime(booking) if booking else ""
+        showed_at = _extract_appointment_datetime(showed) if showed else ""
+        booking_created_at = _extract_appointment_created_datetime(booking) if booking else ""
         cohort_status, cohort_status_label = _daily_cohort_status(
             booking_date=booking_date,
             showed_date=showed_date,
@@ -1389,6 +1398,7 @@ def build_daily_lead_csv_rows(
                 "email": contact.get("email") or "",
                 "phone": contact.get("phone") or "",
                 "created_date": _format_date_value(contact.get("created_date")),
+                "created_at": _extract_contact_datetime(contact, "dateAdded", "createdAt", "date_added", "created_date"),
                 "lead_date": _format_date_value(_contact_lead_date(contact)),
                 "source": contact.get("source") or attribution.get("source") or "",
                 "campaign_id": attribution.get("campaign_id") or _meta_value(meta_row, "campaign_id"),
@@ -1412,8 +1422,12 @@ def build_daily_lead_csv_rows(
                 "cohort_status_label": cohort_status_label,
                 "booking_date": _format_date_value(booking_date),
                 "booking_created_date": _format_date_value(booking_created_date),
+                "booking_created_at": booking_created_at,
+                "appointment_at": booking_at,
                 "showed_date": _format_date_value(showed_date),
+                "showed_at": showed_at,
                 "contract_date": _format_date_value(contact.get("close_date")),
+                "contract_created_at": _format_date_value(contact.get("close_date")),
                 "opportunity_id": _opportunity_value(opportunity, "id"),
                 "opportunity_status": _opportunity_value(opportunity, "status"),
                 "opportunity_stage": _opportunity_stage_label(opportunity),
@@ -1639,6 +1653,51 @@ def _extract_appointment_created_date(appointment: dict[str, Any] | None) -> dat
             except ValueError:
                 continue
     return None
+
+
+def _extract_contact_datetime(contact: dict[str, Any], *keys: str) -> str:
+    raw = contact.get("raw") if isinstance(contact.get("raw"), dict) else contact
+    for key in keys:
+        formatted = _format_datetime_value(raw.get(key))
+        if formatted:
+            return formatted
+    return ""
+
+
+def _extract_appointment_datetime(appointment: dict[str, Any] | None) -> str:
+    if not appointment:
+        return ""
+    for key in ("startTime", "date", "endTime"):
+        formatted = _format_datetime_value(appointment.get(key))
+        if formatted:
+            return formatted
+    return ""
+
+
+def _extract_appointment_created_datetime(appointment: dict[str, Any] | None) -> str:
+    if not appointment:
+        return ""
+    for key in ("dateAdded", "createdAt", "created_at"):
+        formatted = _format_datetime_value(appointment.get(key))
+        if formatted:
+            return formatted
+    return ""
+
+
+def _format_datetime_value(value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw_text = str(value).strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(raw_text)
+        except ValueError:
+            return ""
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ZoneInfo("Europe/Budapest"))
+    return parsed.astimezone(ZoneInfo("Europe/Budapest")).replace(microsecond=0).isoformat()
 
 
 def _build_ghl_adset_source_rows(
