@@ -9,7 +9,9 @@ from pathlib import Path
 from daily_split_exports import (
     DAILY_AD_PERFORMANCE_COLUMNS,
     LEAD_COHORT_COLUMNS,
+    ExportValidationError,
     build_split_exports_from_daily_lead_rows,
+    validate_lead_rows,
 )
 from ghl_client import GHLClient
 from google_sheets_client import _column_letter
@@ -311,11 +313,11 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                     "lead_id": "lead_1",
                     "created_at": "2026-08-05T10:00:00+02:00",
                     "source": "Lioncare KATA",
-                    "campaign_id": "campaign_1",
+                    "campaign_id": "120000000000000001",
                     "campaign_name": "Campaign",
-                    "adset_id": "adset_1",
+                    "adset_id": "120000000000000002",
                     "adset_name": "Adset",
-                    "ad_id": "ad_1",
+                    "ad_id": "120000000000000003",
                     "ad_name": "Ad",
                     "meta_match_level": "ad",
                     "booking_created_at": "2026-08-05T11:00:00+02:00",
@@ -326,11 +328,11 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                     "lead_id": "lead_1",
                     "created_at": "2026-08-05T10:00:00+02:00",
                     "source": "Lioncare KATA",
-                    "campaign_id": "campaign_1",
+                    "campaign_id": "120000000000000001",
                     "campaign_name": "Campaign",
-                    "adset_id": "adset_1",
+                    "adset_id": "120000000000000002",
                     "adset_name": "Adset",
-                    "ad_id": "ad_1",
+                    "ad_id": "120000000000000003",
                     "ad_name": "Ad",
                     "meta_match_level": "ad",
                     "lead_status": "booked",
@@ -346,11 +348,11 @@ class DailyReportAuditGuardTest(unittest.TestCase):
             meta_data={
                 "ads": [
                     {
-                        "campaign_id": "campaign_1",
+                        "campaign_id": "120000000000000001",
                         "campaign_name": "Campaign",
-                        "adset_id": "adset_1",
+                        "adset_id": "120000000000000002",
                         "adset_name": "Adset",
-                        "ad_id": "ad_1",
+                        "ad_id": "120000000000000003",
                         "ad_name": "Ad",
                         "spend": 1200,
                         "impressions": 500,
@@ -361,11 +363,11 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                         "registration_leads": 2,
                     },
                     {
-                        "campaign_id": "campaign_1",
+                        "campaign_id": "120000000000000001",
                         "campaign_name": "Campaign",
-                        "adset_id": "adset_2",
+                        "adset_id": "120000000000000004",
                         "adset_name": "Adset zero",
-                        "ad_id": "ad_zero",
+                        "ad_id": "120000000000000005",
                         "ad_name": "Zero ad",
                         "spend": 0,
                         "impressions": 0,
@@ -378,18 +380,51 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                 ]
             },
             exported_at="2026-08-05T09:00:00+02:00",
+            account_id="act_120000000000000000",
         )
 
         self.assertEqual(DAILY_AD_PERFORMANCE_COLUMNS, list(result["ad_rows"][0].keys()))
         self.assertEqual(2, len(result["ad_rows"]))
-        self.assertEqual({"ad_1", "ad_zero"}, {row["ad_id"] for row in result["ad_rows"]})
-        self.assertEqual(1200, result["qa"]["deduped_spend_huf"])
+        self.assertEqual({"120000000000000003", "120000000000000005"}, {row["ad_id"] for row in result["ad_rows"]})
+        self.assertEqual(1200, result["qa"]["meta_spend_huf"])
         self.assertEqual(LEAD_COHORT_COLUMNS, list(result["lead_rows"][0].keys()))
         self.assertEqual(2, len(result["lead_rows"]))
         self.assertEqual("lead_1:2", result["qa"]["duplicate_lead_ids"])
         lead_2 = [row for row in result["lead_rows"] if row["lead_id"] == "lead_2"][0]
         self.assertEqual("unattributed", lead_2["attribution_status"])
         self.assertEqual("", lead_2["ad_id"])
+        self.assertEqual("datetime", result["lead_rows"][0]["lead_created_precision"])
+
+    def test_daily_split_export_rejects_damaged_meta_id(self) -> None:
+        with self.assertRaises(ExportValidationError):
+            build_split_exports_from_daily_lead_rows(
+                report_date=date(2026, 8, 5),
+                daily_lead_rows=[],
+                meta_data={
+                    "ads": [
+                        {
+                            "campaign_id": "1.2000000000000001e+17",
+                            "adset_id": "120000000000000002",
+                            "ad_id": "120000000000000003",
+                            "spend": 0,
+                        }
+                    ]
+                },
+                exported_at="2026-08-05T09:00:00+02:00",
+                account_id="act_120000000000000000",
+            )
+
+    def test_daily_split_export_rejects_fake_midnight_timestamp(self) -> None:
+        with self.assertRaises(ExportValidationError):
+            validate_lead_rows(
+                [
+                    {
+                        "lead_id": "lead_1",
+                        "contact_id": "lead_1",
+                        "lead_created_at": "2026-08-05T00:00:00+02:00",
+                    }
+                ]
+            )
 
     def test_daily_report_index_contains_drive_links_and_funnel_type(self) -> None:
         rows = build_historical_rows(

@@ -324,6 +324,8 @@ def main() -> None:
                 daily_lead_rows=daily_lead_csv_rows,
                 meta_data=meta_data,
                 exported_at=current_budapest_timestamp(),
+                appointments=current_crm_appointments or [],
+                account_id=meta_config.ad_account_id if meta_config else "",
             )
 
         if args.report_type == "weekly_compare":
@@ -566,6 +568,7 @@ def main() -> None:
                     report_date=start_date,
                     ad_rows=daily_split_exports["ad_rows"],
                     lead_rows=daily_split_exports["lead_rows"],
+                    event_rows=daily_split_exports["event_rows"],
                 )
             write_html_report(
                 html_path=html_path,

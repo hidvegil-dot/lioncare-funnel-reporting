@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dotenv import load_dotenv
 
 from daily_split_exports import (
     BACKFILL_QA_COLUMNS,
@@ -14,6 +17,7 @@ from daily_split_exports import (
     read_csv_rows,
     write_backfill_qa_report,
     write_daily_split_csvs,
+    write_schema_json,
 )
 
 
@@ -36,10 +40,16 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Inclusive end date in YYYY-MM-DD format. Defaults to the latest available source day.",
     )
+    parser.add_argument(
+        "--meta-ad-account-id",
+        default="",
+        help="Meta ad account ID used when legacy source CSV lacks account_id.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
+    load_dotenv()
     args = parse_args()
     daily_root = Path(args.daily_root).expanduser().resolve()
     start_date = date.fromisoformat(args.start_date)
@@ -50,6 +60,7 @@ def main() -> None:
     available_dates = sorted(source_files)
     end_date = date.fromisoformat(args.end_date) if args.end_date else available_dates[-1]
     exported_at = current_budapest_timestamp()
+    meta_ad_account_id = (args.meta_ad_account_id or os.getenv("META_AD_ACCOUNT_ID", "")).strip().removeprefix("act_")
     qa_rows = []
     missing_dates = []
 
@@ -58,6 +69,14 @@ def main() -> None:
         source_path = source_files.get(cursor)
         if source_path is None:
             missing_dates.append(cursor.isoformat())
+            qa_rows.append(
+                {
+                    "date": cursor.isoformat(),
+                    "processing_status": "insufficient_source",
+                    "source_completeness": "missing_source",
+                    "notes": "No source CSV found; no synthetic output generated.",
+                }
+            )
             cursor += timedelta(days=1)
             continue
 
@@ -67,9 +86,12 @@ def main() -> None:
             qa_rows.append(
                 {
                     "date": cursor.isoformat(),
+                    "processing_status": "insufficient_source",
+                    "source_completeness": "aggregate_only",
                     "source_file": str(source_path),
                     "source_rows": len(source_rows),
                     "missing_required_fields": f"incompatible_source:{'|'.join(missing_source_columns)}",
+                    "notes": "Source file is aggregate daily report, not raw lead/ad records; no corrected output generated.",
                 }
             )
             cursor += timedelta(days=1)
@@ -80,21 +102,31 @@ def main() -> None:
             source_path=source_path,
             report_date=cursor,
             exported_at=exported_at,
+            account_id=meta_ad_account_id,
         )
-        ad_path, lead_path = write_daily_split_csvs(
+        ad_path, lead_path, event_path = write_daily_split_csvs(
             output_dir=corrected_dir,
             report_date=cursor,
             ad_rows=result["ad_rows"],
             lead_rows=result["lead_rows"],
+            event_rows=result["event_rows"],
         )
         qa = result["qa"]
         qa["ad_performance_file"] = str(ad_path)
         qa["lead_cohort_file"] = str(lead_path)
+        qa["appointment_events_file"] = str(event_path)
         qa_rows.append({field: qa.get(field, "") for field in BACKFILL_QA_COLUMNS})
         cursor += timedelta(days=1)
 
     qa_path = daily_root / "corrected" / "backfill_qa_report.csv"
     write_backfill_qa_report(qa_path, qa_rows)
+    write_schema_json(daily_root / "corrected" / "schema.json")
+    dictionary_source = Path(__file__).resolve().parents[1] / "docs" / "daily_funnel_export_data_dictionary.md"
+    if dictionary_source.exists():
+        (daily_root / "corrected" / "data_dictionary.md").write_text(
+            dictionary_source.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
 
     print(f"Processed dates: {', '.join(row['date'] for row in qa_rows)}")
     print(f"Missing dates: {', '.join(missing_dates) if missing_dates else 'none'}")

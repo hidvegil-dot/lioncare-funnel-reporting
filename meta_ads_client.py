@@ -58,6 +58,9 @@ class MetaAdsClient:
         summary = _summarize_meta_rows(campaign_rows)
 
         return {
+            "account_id": self.config.ad_account_id.removeprefix("act_"),
+            "account_timezone": "Europe/Budapest",
+            "currency": "HUF",
             "summary": summary,
             "campaigns": [_normalize_meta_row(row, "campaign") for row in campaign_rows],
             "adsets": [_normalize_meta_row(row, "adset") for row in adset_rows],
@@ -81,6 +84,7 @@ class MetaAdsClient:
                     "date_stop",
                     "spend",
                     "impressions",
+                    "reach",
                     "clicks",
                     "ctr",
                     "cpc",
@@ -197,6 +201,7 @@ def _normalize_meta_row(row: dict[str, Any], level: str) -> dict[str, Any]:
         "spend": _to_float(row.get("spend")),
         "impressions": _to_int(row.get("impressions")),
         "clicks": _to_int(row.get("clicks")),
+        "reach": _to_int(row.get("reach")) if row.get("reach") not in (None, "") else "",
         "link_click": actions.get("link_click", 0),
         "ctr": _to_float(row.get("ctr")),
         "cpc": _to_float(row.get("cpc")),
