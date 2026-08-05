@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from daily_split_exports import (
     BACKFILL_QA_COLUMNS,
+    ExportValidationError,
     build_split_exports_from_combined_csv,
     current_budapest_timestamp,
     read_csv_rows,
@@ -19,6 +20,7 @@ from daily_split_exports import (
     write_daily_split_csvs,
     write_schema_json,
 )
+from ghl_client import GHLAPIError, GHLClient, GHLConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +63,7 @@ def main() -> None:
     end_date = date.fromisoformat(args.end_date) if args.end_date else available_dates[-1]
     exported_at = current_budapest_timestamp()
     meta_ad_account_id = (args.meta_ad_account_id or os.getenv("META_AD_ACCOUNT_ID", "")).strip().removeprefix("act_")
+    ghl_client = _build_ghl_client_optional()
     corrected_root = daily_root / "corrected" / "2026-08"
     qa_rows = []
     missing_dates = []
@@ -69,6 +72,7 @@ def main() -> None:
     while cursor <= end_date:
         source_path = source_files.get(cursor)
         if source_path is None:
+            _remove_stale_corrected_outputs(corrected_root, cursor)
             missing_dates.append(cursor.isoformat())
             qa_rows.append(
                 {
@@ -84,6 +88,7 @@ def main() -> None:
         source_rows = read_csv_rows(source_path)
         missing_source_columns = _missing_source_columns(source_rows)
         if missing_source_columns:
+            _remove_stale_corrected_outputs(corrected_root, cursor)
             qa_rows.append(
                 {
                     "date": cursor.isoformat(),
@@ -98,12 +103,64 @@ def main() -> None:
             cursor += timedelta(days=1)
             continue
 
-        result = build_split_exports_from_combined_csv(
-            source_path=source_path,
-            report_date=cursor,
-            exported_at=exported_at,
-            account_id=meta_ad_account_id,
-        )
+        appointments = []
+        appointment_notes = ""
+        if _requires_appointment_source(source_rows):
+            if ghl_client is None:
+                _remove_stale_corrected_outputs(corrected_root, cursor)
+                qa_rows.append(
+                    {
+                        "date": cursor.isoformat(),
+                        "processing_status": "insufficient_source",
+                        "source_completeness": "missing_ghl_api_for_appointments",
+                        "source_file": str(source_path),
+                        "missing_required_fields": "appointment_source:GHL_API",
+                        "notes": "Source rows contain booking/show/cancel status but no live GHL client was available; no synthetic appointment events generated.",
+                    }
+                )
+                cursor += timedelta(days=1)
+                continue
+            try:
+                appointments = _fetch_appointments_for_source_rows(ghl_client, source_rows)
+                appointment_notes = f"appointment_source=ghl_contact_appointments;appointments={len(appointments)}"
+            except GHLAPIError as exc:
+                _remove_stale_corrected_outputs(corrected_root, cursor)
+                qa_rows.append(
+                    {
+                        "date": cursor.isoformat(),
+                        "processing_status": "insufficient_source",
+                        "source_completeness": "ghl_appointment_api_failed",
+                        "source_file": str(source_path),
+                        "missing_required_fields": "appointment_source:GHL_API",
+                        "notes": f"Could not fetch GHL appointments; no synthetic appointment events generated. {exc}",
+                    }
+                )
+                cursor += timedelta(days=1)
+                continue
+
+        try:
+            result = build_split_exports_from_combined_csv(
+                source_path=source_path,
+                report_date=cursor,
+                exported_at=exported_at,
+                account_id=meta_ad_account_id,
+                appointments=appointments,
+                require_event_consistency=bool(appointments or _requires_appointment_source(source_rows)),
+            )
+        except ExportValidationError as exc:
+            _remove_stale_corrected_outputs(corrected_root, cursor)
+            qa_rows.append(
+                {
+                    "date": cursor.isoformat(),
+                    "processing_status": "insufficient_source",
+                    "source_completeness": "appointment_event_consistency_failed",
+                    "source_file": str(source_path),
+                    "missing_required_fields": "appointment_events",
+                    "notes": f"{appointment_notes}; validation_error={exc}",
+                }
+            )
+            cursor += timedelta(days=1)
+            continue
         ad_path, lead_path, event_path = write_daily_split_csvs(
             output_dir=corrected_root,
             report_date=cursor,
@@ -115,6 +172,7 @@ def main() -> None:
         qa["ad_performance_file"] = str(ad_path)
         qa["lead_cohort_file"] = str(lead_path)
         qa["appointment_events_file"] = str(event_path)
+        qa["notes"] = "; ".join(part for part in [str(qa.get("notes") or ""), appointment_notes] if part)
         qa_rows.append({field: qa.get(field, "") for field in BACKFILL_QA_COLUMNS})
         cursor += timedelta(days=1)
 
@@ -153,6 +211,47 @@ def _missing_source_columns(rows: list[dict[str, str]]) -> list[str]:
     required = {"report_date", "lead_id", "created_date", "source", "ad_id", "meta_match_level"}
     columns = set(rows[0].keys()) if rows else set()
     return sorted(required - columns)
+
+
+def _build_ghl_client_optional() -> GHLClient | None:
+    try:
+        return GHLClient(GHLConfig.from_env())
+    except Exception:
+        return None
+
+
+def _requires_appointment_source(rows: list[dict[str, str]]) -> bool:
+    for row in rows:
+        status = str(row.get("lead_status") or row.get("cohort_status") or "").strip().lower()
+        if any(token in status for token in ("book", "future_booking", "show", "no_show", "cancel")):
+            return True
+        if any(str(row.get(key) or "").strip() for key in ("booking_date", "booking_created_at", "appointment_at", "showed_at", "no_show_at", "cancelled_at")):
+            return True
+    return False
+
+
+def _fetch_appointments_for_source_rows(client: GHLClient, rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    appointments: list[dict[str, object]] = []
+    contact_ids = sorted(
+        {
+            str(row.get("contact_id") or row.get("lead_id") or "").strip()
+            for row in rows
+            if str(row.get("contact_id") or row.get("lead_id") or "").strip()
+        }
+    )
+    for contact_id in contact_ids:
+        for appointment in client.fetch_contact_appointments(contact_id):
+            if isinstance(appointment, dict):
+                appointment.setdefault("contactId", contact_id)
+                appointments.append(appointment)
+    return appointments
+
+
+def _remove_stale_corrected_outputs(corrected_root: Path, report_date: date) -> None:
+    for prefix in ("daily_ad_performance", "lead_cohort", "appointment_events"):
+        path = corrected_root / f"{prefix}_{report_date.isoformat()}.csv"
+        if path.exists():
+            path.unlink()
 
 
 def _date_from_source_path(path: Path) -> date | None:

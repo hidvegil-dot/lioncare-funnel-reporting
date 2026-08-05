@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 from collections import Counter
@@ -39,6 +40,8 @@ DAILY_AD_PERFORMANCE_COLUMNS = [
 
 LEAD_COHORT_COLUMNS = [
     "lead_id",
+    "lead_id_source",
+    "lead_id_method",
     "contact_id",
     "lead_created_at",
     "lead_created_precision",
@@ -48,12 +51,16 @@ LEAD_COHORT_COLUMNS = [
     "utm_source",
     "utm_medium",
     "utm_campaign",
+    "matched_campaign_name",
     "fbclid",
     "fbc",
     "fbp",
     "normalized_channel",
     "attribution_status",
     "attribution_method",
+    "attribution_evidence_type",
+    "attribution_evidence_value",
+    "attribution_confidence",
     "campaign_id",
     "campaign_name",
     "adset_id",
@@ -61,15 +68,24 @@ LEAD_COHORT_COLUMNS = [
     "ad_id",
     "ad_name",
     "first_booking_created_at",
+    "first_booking_created_precision",
     "first_appointment_at",
+    "first_appointment_precision",
     "latest_appointment_at",
+    "latest_appointment_precision",
     "showed_at",
+    "showed_precision",
     "no_show_at",
+    "no_show_precision",
     "cancelled_at",
+    "cancelled_precision",
     "contract_created_at",
+    "contract_created_precision",
     "opportunity_id",
     "opportunity_created_at",
+    "opportunity_created_precision",
     "opportunity_updated_at",
+    "opportunity_updated_precision",
     "opportunity_status",
     "current_status",
     "data_as_of",
@@ -83,7 +99,9 @@ APPOINTMENT_EVENTS_COLUMNS = [
     "appointment_id",
     "event_type",
     "event_created_at",
+    "event_created_precision",
     "appointment_start_at",
+    "appointment_start_precision",
     "previous_status",
     "new_status",
     "data_as_of",
@@ -108,6 +126,7 @@ BACKFILL_QA_COLUMNS = [
     "exact_id_failures",
     "fake_midnight_timestamps",
     "missing_actual_timestamps",
+    "missing_reach",
     "meta_spend_huf",
     "landing_page_views",
     "meta_registration_leads",
@@ -233,6 +252,8 @@ def build_split_exports_from_daily_lead_rows(
         exported_at=exported_at,
         data_as_of=exported_at,
     )
+    enrich_lead_rows_from_appointment_events(lead_rows, event_rows)
+    validate_lead_rows(lead_rows)
     validate_event_consistency(lead_rows=lead_rows, event_rows=event_rows)
     qa = build_split_export_qa(
         report_date=report_date,
@@ -255,6 +276,8 @@ def build_split_exports_from_combined_csv(
     report_date: date,
     exported_at: str,
     account_id: str = "",
+    appointments: list[dict[str, Any]] | None = None,
+    require_event_consistency: bool = False,
 ) -> dict[str, Any]:
     source_rows = read_csv_rows(source_path)
     ad_rows, ad_conflicts = dedupe_ad_performance_rows(
@@ -270,6 +293,16 @@ def build_split_exports_from_combined_csv(
         exported_at=exported_at,
         data_as_of=exported_at,
     )
+    event_rows = build_appointment_event_rows(
+        appointments=appointments or [],
+        lead_rows=lead_rows,
+        exported_at=exported_at,
+        data_as_of=exported_at,
+    )
+    enrich_lead_rows_from_appointment_events(lead_rows, event_rows)
+    validate_lead_rows(lead_rows)
+    if require_event_consistency:
+        validate_event_consistency(lead_rows=lead_rows, event_rows=event_rows)
     qa = build_split_export_qa(
         report_date=report_date,
         source_file=str(source_path),
@@ -278,11 +311,51 @@ def build_split_exports_from_combined_csv(
         source_rows=source_rows,
         ad_rows=ad_rows,
         lead_rows=lead_rows,
-        event_rows=[],
+        event_rows=event_rows,
         duplicate_leads=duplicate_leads,
         ad_conflicts=ad_conflicts,
     )
-    return {"ad_rows": ad_rows, "lead_rows": lead_rows, "event_rows": [], "qa": qa}
+    return {"ad_rows": ad_rows, "lead_rows": lead_rows, "event_rows": event_rows, "qa": qa}
+
+
+def enrich_lead_rows_from_appointment_events(lead_rows: list[dict[str, Any]], event_rows: list[dict[str, Any]]) -> None:
+    events_by_lead: dict[str, list[dict[str, Any]]] = {}
+    for event in event_rows:
+        events_by_lead.setdefault(_clean(event.get("lead_id")), []).append(event)
+
+    for lead in lead_rows:
+        lead_events = sorted(
+            events_by_lead.get(_clean(lead.get("lead_id")), []),
+            key=lambda event: (_clean(event.get("event_created_at")), _clean(event.get("appointment_start_at"))),
+        )
+        if not lead_events:
+            continue
+        booking_events = [event for event in lead_events if event.get("event_type") == "booking_created"]
+        if booking_events:
+            first_booking = booking_events[0]
+            latest_booking = max(booking_events, key=lambda event: _clean(event.get("appointment_start_at")))
+            _fill_if_blank(lead, "first_booking_created_at", first_booking.get("event_created_at"))
+            _fill_if_blank(lead, "first_booking_created_precision", first_booking.get("event_created_precision"))
+            _fill_if_blank(lead, "first_appointment_at", first_booking.get("appointment_start_at"))
+            _fill_if_blank(lead, "first_appointment_precision", first_booking.get("appointment_start_precision"))
+            lead["latest_appointment_at"] = latest_booking.get("appointment_start_at") or lead.get("latest_appointment_at", "")
+            lead["latest_appointment_precision"] = latest_booking.get("appointment_start_precision") or lead.get("latest_appointment_precision", "")
+
+        for event_type, timestamp_field, precision_field in (
+            ("showed", "showed_at", "showed_precision"),
+            ("no_show", "no_show_at", "no_show_precision"),
+            ("cancelled", "cancelled_at", "cancelled_precision"),
+        ):
+            matching = [event for event in lead_events if event.get("event_type") == event_type]
+            if matching:
+                event = matching[0]
+                lead[timestamp_field] = event.get("event_created_at") or event.get("appointment_start_at") or lead.get(timestamp_field, "")
+                lead[precision_field] = event.get("event_created_precision") or event.get("appointment_start_precision") or lead.get(precision_field, "")
+
+
+def _fill_if_blank(row: dict[str, Any], key: str, value: Any) -> None:
+    if not _clean(row.get(key)) and _clean(value):
+        row[key] = value
 
 
 def build_lead_cohort_rows(
@@ -291,13 +364,14 @@ def build_lead_cohort_rows(
     exported_at: str,
     data_as_of: str,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    counts = Counter(_clean(row.get("lead_id") or row.get("contact_id")) for row in daily_lead_rows if _clean(row.get("lead_id") or row.get("contact_id")))
-    grouped: dict[str, dict[str, Any]] = {}
+    keyed_rows: list[tuple[str, dict[str, Any]]] = []
     for source_row in daily_lead_rows:
-        lead_id = _clean(source_row.get("lead_id") or source_row.get("contact_id"))
-        if not lead_id:
-            continue
         row = _lead_cohort_row_from_daily_row(source_row, exported_at=exported_at, data_as_of=data_as_of)
+        if row.get("lead_id"):
+            keyed_rows.append((_clean(row["lead_id"]), row))
+    counts = Counter(key for key, _ in keyed_rows)
+    grouped: dict[str, dict[str, Any]] = {}
+    for lead_id, row in keyed_rows:
         if lead_id not in grouped:
             grouped[lead_id] = row
             continue
@@ -322,33 +396,94 @@ def build_appointment_event_rows(
         contact_id = _appointment_contact_id(appointment)
         lead_id = lead_by_contact.get(contact_id, contact_id)
         appointment_id = _clean(appointment.get("id") or appointment.get("_id"))
-        start_at, _ = _value_and_precision(appointment.get("startTime") or appointment.get("date"))
-        created_at, _ = _value_and_precision(appointment.get("dateAdded") or appointment.get("createdAt"))
+        start_at, start_precision = _value_and_precision(appointment.get("startTime") or appointment.get("date"))
+        created_at, created_precision = _value_and_precision(appointment.get("dateAdded") or appointment.get("createdAt"))
         status = _clean(
             appointment.get("appointmentStatus")
             or appointment.get("status")
             or appointment.get("calendarStatus")
             or appointment.get("appoinmentStatus")
         ).lower()
-        event_type = _appointment_event_type(status)
-        if not event_type:
-            continue
-        events.append(
-            {
-                "event_id": f"{appointment_id or contact_id}:{event_type}:{created_at or start_at}",
-                "lead_id": lead_id,
-                "contact_id": contact_id,
-                "appointment_id": appointment_id,
-                "event_type": event_type,
-                "event_created_at": created_at,
-                "appointment_start_at": start_at,
-                "previous_status": "",
-                "new_status": status,
-                "data_as_of": data_as_of,
-                "exported_at": exported_at,
-            }
-        )
-    return sorted(events, key=lambda row: row["event_id"])
+        if created_at or start_at:
+            events.append(
+                _appointment_event_row(
+                    appointment_id=appointment_id,
+                    contact_id=contact_id,
+                    lead_id=lead_id,
+                    event_type="booking_created",
+                    event_created_at=created_at or start_at,
+                    event_created_precision=created_precision or start_precision,
+                    appointment_start_at=start_at,
+                    appointment_start_precision=start_precision,
+                    previous_status="",
+                    new_status=status or "booked",
+                    data_as_of=data_as_of,
+                    exported_at=exported_at,
+                )
+            )
+
+        status_event_type = _appointment_status_event_type(status)
+        if status_event_type:
+            status_changed_at, status_changed_precision = _value_and_precision(
+                appointment.get("statusUpdatedAt")
+                or appointment.get("statusChangedAt")
+                or appointment.get("updatedAt")
+                or appointment.get("dateUpdated")
+                or appointment.get("lastStatusChangeAt")
+                or appointment.get("dateAdded")
+                or appointment.get("createdAt")
+            )
+            events.append(
+                _appointment_event_row(
+                    appointment_id=appointment_id,
+                    contact_id=contact_id,
+                    lead_id=lead_id,
+                    event_type=status_event_type,
+                    event_created_at=status_changed_at or created_at or start_at,
+                    event_created_precision=status_changed_precision or created_precision or start_precision,
+                    appointment_start_at=start_at,
+                    appointment_start_precision=start_precision,
+                    previous_status="",
+                    new_status=status,
+                    data_as_of=data_as_of,
+                    exported_at=exported_at,
+                )
+            )
+    deduped = {row["event_id"]: row for row in events if _clean(row.get("event_id"))}
+    return sorted(deduped.values(), key=lambda row: row["event_id"])
+
+
+def _appointment_event_row(
+    *,
+    appointment_id: str,
+    contact_id: str,
+    lead_id: str,
+    event_type: str,
+    event_created_at: str,
+    event_created_precision: str,
+    appointment_start_at: str,
+    appointment_start_precision: str,
+    previous_status: str,
+    new_status: str,
+    data_as_of: str,
+    exported_at: str,
+) -> dict[str, Any]:
+    event_base = appointment_id or contact_id or lead_id
+    return {
+        "event_id": f"{event_base}:{event_type}:{event_created_at or appointment_start_at}",
+        "lead_id": lead_id,
+        "contact_id": contact_id,
+        "appointment_id": appointment_id,
+        "event_type": event_type,
+        "event_created_at": event_created_at,
+        "event_created_precision": event_created_precision,
+        "appointment_start_at": appointment_start_at,
+        "appointment_start_precision": appointment_start_precision,
+        "previous_status": previous_status,
+        "new_status": new_status,
+        "data_as_of": data_as_of,
+        "exported_at": exported_at,
+    }
 
 
 def dedupe_ad_performance_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -412,6 +547,7 @@ def build_split_export_qa(
         "exact_id_failures": ";".join(_id_failures(ad_rows, lead_rows)),
         "fake_midnight_timestamps": fake_midnight,
         "missing_actual_timestamps": _missing_actual_timestamp_notes(lead_rows),
+        "missing_reach": sum(1 for row in ad_rows if _clean(row.get("reach")) == ""),
         "meta_spend_huf": _sum_numeric(row.get("spend_huf") for row in ad_rows),
         "landing_page_views": _sum_numeric(row.get("landing_page_views") for row in ad_rows),
         "meta_registration_leads": _sum_numeric(row.get("registration_leads") for row in ad_rows),
@@ -453,6 +589,13 @@ def validate_lead_rows(rows: list[dict[str, Any]]) -> None:
     fake_midnight = _fake_midnight_count(rows)
     if fake_midnight:
         raise ExportValidationError(f"Fake midnight timestamps detected: {fake_midnight}")
+    for row in rows:
+        if row.get("attribution_status") == "attributed" and not _clean(row.get("attribution_evidence_value")):
+            raise ExportValidationError(f"Attributed lead has no evidence: {row.get('lead_id')}")
+        if _clean(row.get("utm_campaign")) and _clean(row.get("utm_campaign")) == _clean(row.get("matched_campaign_name")):
+            raise ExportValidationError(f"Derived campaign name leaked into utm_campaign: {row.get('lead_id')}")
+        if _clean(row.get("lead_id")) == _clean(row.get("contact_id")) and _clean(row.get("lead_id_method")) != "source_contact_id_fallback":
+            raise ExportValidationError(f"lead_id equals contact_id without documented fallback: {row.get('lead_id')}")
 
 
 def validate_event_consistency(*, lead_rows: list[dict[str, Any]], event_rows: list[dict[str, Any]]) -> None:
@@ -510,27 +653,45 @@ def read_csv_rows(path: Path) -> list[dict[str, Any]]:
 
 def _lead_cohort_row_from_daily_row(source_row: dict[str, Any], *, exported_at: str, data_as_of: str) -> dict[str, Any]:
     ad_id = _id_string(source_row.get("ad_id"))
-    has_meta_id = bool(ad_id and _clean(source_row.get("meta_match_level")) != "none")
-    attribution_status = "attributed" if has_meta_id else "unattributed"
+    evidence_type, evidence_value = _attribution_evidence(source_row)
+    meta_match_level = _clean(source_row.get("meta_match_level"))
+    has_direct_meta_evidence = bool(evidence_value and meta_match_level == "ad")
+    has_partial_meta_evidence = bool(evidence_value and meta_match_level in {"adset", "campaign"})
+    if has_direct_meta_evidence:
+        attribution_status = "attributed"
+        attribution_confidence = "high"
+    elif has_partial_meta_evidence:
+        attribution_status = "partial"
+        attribution_confidence = "medium"
+    elif ad_id and meta_match_level not in {"", "none"}:
+        attribution_status = "uncertain"
+        attribution_confidence = "low"
+    else:
+        attribution_status = "unattributed"
+        attribution_confidence = ""
     lead_created_at, lead_precision = _value_and_precision(
         source_row.get("created_at") or source_row.get("created_date") or source_row.get("lead_date")
     )
-    first_booking_created_at, _ = _value_and_precision(
+    first_booking_created_at, first_booking_created_precision = _value_and_precision(
         source_row.get("booking_created_at") or source_row.get("booking_created_date")
     )
-    first_appointment_at, _ = _value_and_precision(
+    first_appointment_at, first_appointment_precision = _value_and_precision(
         source_row.get("appointment_at") or source_row.get("booking_date")
     )
-    showed_at, _ = _value_and_precision(source_row.get("showed_at") or source_row.get("showed_date"))
-    contract_created_at, _ = _value_and_precision(
+    showed_at, showed_precision = _value_and_precision(source_row.get("showed_at") or source_row.get("showed_date"))
+    no_show_at, no_show_precision = _value_and_precision(source_row.get("no_show_at") or source_row.get("no_show_date"))
+    cancelled_at, cancelled_precision = _value_and_precision(source_row.get("cancelled_at") or source_row.get("cancelled_date"))
+    contract_created_at, contract_created_precision = _value_and_precision(
         source_row.get("contract_created_at") or source_row.get("contract_date")
     )
-    opportunity_created_at, _ = _value_and_precision(source_row.get("opportunity_created_at"))
-    opportunity_updated_at, _ = _value_and_precision(source_row.get("opportunity_updated_at"))
+    opportunity_created_at, opportunity_created_precision = _value_and_precision(source_row.get("opportunity_created_at"))
+    opportunity_updated_at, opportunity_updated_precision = _value_and_precision(source_row.get("opportunity_updated_at"))
     contact_id = _clean(source_row.get("contact_id") or source_row.get("lead_id"))
-    raw_lead_id = _clean(source_row.get("form_submission_id") or source_row.get("lead_event_id") or source_row.get("lead_id"))
+    lead_id, lead_id_source, lead_id_method = _derive_lead_id(source_row, contact_id=contact_id)
     return {
-        "lead_id": raw_lead_id or contact_id,
+        "lead_id": lead_id,
+        "lead_id_source": lead_id_source,
+        "lead_id_method": lead_id_method,
         "contact_id": contact_id,
         "lead_created_at": lead_created_at,
         "lead_created_precision": lead_precision,
@@ -539,34 +700,92 @@ def _lead_cohort_row_from_daily_row(source_row: dict[str, Any], *, exported_at: 
         "landing_page_url": _clean(source_row.get("landing_page_url")),
         "utm_source": _clean(source_row.get("utm_source")),
         "utm_medium": _clean(source_row.get("utm_medium")),
-        "utm_campaign": _clean(source_row.get("utm_campaign") or source_row.get("campaign_name")),
+        "utm_campaign": _clean(source_row.get("utm_campaign")),
+        "matched_campaign_name": _clean(source_row.get("campaign_name")) if attribution_status in {"attributed", "partial", "uncertain"} else "",
         "fbclid": _clean(source_row.get("fbclid")),
         "fbc": _clean(source_row.get("fbc")),
         "fbp": _clean(source_row.get("fbp")),
         "normalized_channel": "paid_social" if attribution_status == "attributed" else "",
         "attribution_status": attribution_status,
-        "attribution_method": "meta_ad_id" if attribution_status == "attributed" else "",
-        "campaign_id": _id_string(source_row.get("campaign_id")) if attribution_status == "attributed" else "",
-        "campaign_name": _clean(source_row.get("campaign_name")) if attribution_status == "attributed" else "",
-        "adset_id": _id_string(source_row.get("adset_id")) if attribution_status == "attributed" else "",
-        "adset_name": _clean(source_row.get("adset_name")) if attribution_status == "attributed" else "",
+        "attribution_method": _clean(source_row.get("attribution_method")) or ("direct_meta_ad_evidence" if attribution_status == "attributed" else ("partial_meta_evidence" if attribution_status == "partial" else ("legacy_meta_match_without_raw_evidence" if attribution_status == "uncertain" else ""))),
+        "attribution_evidence_type": evidence_type,
+        "attribution_evidence_value": evidence_value,
+        "attribution_confidence": attribution_confidence,
+        "campaign_id": _id_string(source_row.get("campaign_id")) if attribution_status in {"attributed", "partial"} else "",
+        "campaign_name": _clean(source_row.get("campaign_name")) if attribution_status in {"attributed", "partial"} else "",
+        "adset_id": _id_string(source_row.get("adset_id")) if attribution_status in {"attributed", "partial"} else "",
+        "adset_name": _clean(source_row.get("adset_name")) if attribution_status in {"attributed", "partial"} else "",
         "ad_id": ad_id if attribution_status == "attributed" else "",
         "ad_name": _clean(source_row.get("ad_name")) if attribution_status == "attributed" else "",
         "first_booking_created_at": first_booking_created_at,
+        "first_booking_created_precision": first_booking_created_precision,
         "first_appointment_at": first_appointment_at,
+        "first_appointment_precision": first_appointment_precision,
         "latest_appointment_at": first_appointment_at,
+        "latest_appointment_precision": first_appointment_precision,
         "showed_at": showed_at,
-        "no_show_at": "",
-        "cancelled_at": "",
+        "showed_precision": showed_precision,
+        "no_show_at": no_show_at,
+        "no_show_precision": no_show_precision,
+        "cancelled_at": cancelled_at,
+        "cancelled_precision": cancelled_precision,
         "contract_created_at": contract_created_at,
+        "contract_created_precision": contract_created_precision,
         "opportunity_id": _clean(source_row.get("opportunity_id")),
         "opportunity_created_at": opportunity_created_at,
+        "opportunity_created_precision": opportunity_created_precision,
         "opportunity_updated_at": opportunity_updated_at,
+        "opportunity_updated_precision": opportunity_updated_precision,
         "opportunity_status": _clean(source_row.get("opportunity_status")),
         "current_status": _clean(source_row.get("lead_status") or source_row.get("cohort_status")),
         "data_as_of": data_as_of,
         "exported_at": exported_at,
     }
+
+
+def _derive_lead_id(source_row: dict[str, Any], *, contact_id: str) -> tuple[str, str, str]:
+    for source_name, method, keys in (
+        ("form_submission_id", "source_form_submission_id", ("form_submission_id", "meta_lead_id", "facebook_lead_id")),
+        ("lead_event_id", "source_lead_event_id", ("lead_event_id", "leadEventId")),
+        ("opportunity_id", "source_opportunity_id", ("opportunity_id",)),
+    ):
+        for key in keys:
+            value = _clean(source_row.get(key))
+            if value:
+                return value, source_name, method
+    if contact_id:
+        fingerprint = "|".join(
+            [
+                contact_id,
+                _clean(source_row.get("created_at") or source_row.get("created_date") or source_row.get("lead_date")),
+                _clean(source_row.get("source")),
+                _clean(source_row.get("landing_page_url")),
+            ]
+        )
+        suffix = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:16]
+        return f"techlead_{suffix}", "deterministic_technical_key", "contact_source_timestamp_hash"
+    return "", "", ""
+
+
+def _attribution_evidence(source_row: dict[str, Any]) -> tuple[str, str]:
+    explicit_type = _clean(source_row.get("attribution_evidence_type"))
+    explicit_value = _clean(source_row.get("attribution_evidence_value"))
+    if explicit_type and explicit_value:
+        return explicit_type, explicit_value
+    for key, evidence_type in (
+        ("meta_lead_id", "meta_lead_id"),
+        ("facebook_lead_id", "meta_lead_id"),
+        ("fbclid", "fbclid"),
+        ("fbc", "fbc"),
+        ("fbp", "fbp"),
+        ("utm_source", "utm"),
+        ("utm_medium", "utm"),
+        ("utm_campaign", "utm"),
+    ):
+        value = _clean(source_row.get(key))
+        if value:
+            return evidence_type, value
+    return "", ""
 
 
 def _ad_row_from_legacy_daily_lead_row(source_row: dict[str, Any], *, exported_at: str, account_id: str = "") -> dict[str, Any]:
@@ -714,15 +933,15 @@ def _appointment_contact_id(appointment: dict[str, Any]) -> str:
     return ""
 
 
-def _appointment_event_type(status: str) -> str:
+def _appointment_status_event_type(status: str) -> str:
     if status in {"showed", "show", "completed", "attended", "confirmed-show"}:
         return "showed"
     if status in {"noshow", "no-show", "no_show", "did_not_show"}:
         return "no_show"
     if status in {"cancelled", "canceled", "cancelled_by_user", "canceled_by_user"}:
         return "cancelled"
-    if status:
-        return "booking_created"
+    if status in {"rescheduled", "reschedule"}:
+        return "rescheduled"
     return ""
 
 

@@ -41,6 +41,9 @@ MEETING_FIELDS = [
 DAILY_LEAD_CSV_COLUMNS = [
     "report_date",
     "lead_id",
+    "form_submission_id",
+    "lead_event_id",
+    "meta_lead_id",
     "contact_id",
     "contact_name",
     "email",
@@ -49,6 +52,15 @@ DAILY_LEAD_CSV_COLUMNS = [
     "created_at",
     "lead_date",
     "source",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "fbclid",
+    "fbc",
+    "fbp",
+    "attribution_method",
+    "attribution_evidence_type",
+    "attribution_evidence_value",
     "campaign_id",
     "campaign_name",
     "adset_id",
@@ -1389,10 +1401,14 @@ def build_daily_lead_csv_rows(
         opportunity = _select_contact_opportunity(opportunities_by_contact.get(contact_id, []))
 
         row = {column: "" for column in DAILY_LEAD_CSV_COLUMNS}
+        evidence_type, evidence_value = _daily_attribution_evidence(attribution, meta_match_level)
         row.update(
             {
                 "report_date": report_date.isoformat(),
                 "lead_id": contact_id,
+                "form_submission_id": attribution.get("form_submission_id") or "",
+                "lead_event_id": attribution.get("lead_event_id") or "",
+                "meta_lead_id": attribution.get("meta_lead_id") or "",
                 "contact_id": contact_id,
                 "contact_name": contact.get("name") or contact.get("email") or contact.get("phone") or contact_id,
                 "email": contact.get("email") or "",
@@ -1401,6 +1417,15 @@ def build_daily_lead_csv_rows(
                 "created_at": _extract_contact_datetime(contact, "dateAdded", "createdAt", "date_added", "created_date"),
                 "lead_date": _format_date_value(_contact_lead_date(contact)),
                 "source": contact.get("source") or attribution.get("source") or "",
+                "utm_source": attribution.get("utm_source") or "",
+                "utm_medium": attribution.get("utm_medium") or "",
+                "utm_campaign": attribution.get("utm_campaign") or "",
+                "fbclid": attribution.get("fbclid") or "",
+                "fbc": attribution.get("fbc") or "",
+                "fbp": attribution.get("fbp") or "",
+                "attribution_method": _daily_attribution_method(attribution, meta_match_level),
+                "attribution_evidence_type": evidence_type,
+                "attribution_evidence_value": evidence_value,
                 "campaign_id": attribution.get("campaign_id") or _meta_value(meta_row, "campaign_id"),
                 "campaign_name": _meta_value(meta_row, "campaign_name") or attribution.get("campaign_name"),
                 "adset_id": attribution.get("adset_id") or _meta_value(meta_row, "adset_id"),
@@ -1496,6 +1521,9 @@ def _extract_contact_meta_attribution(contact: dict[str, Any]) -> dict[str, str]
     attribution_data: dict[str, str] = {}
     for attribution in _iter_contact_attributions(raw):
         values = {
+            "form_submission_id": _first_present(attribution, "formSubmissionId", "form_submission_id"),
+            "lead_event_id": _first_present(attribution, "leadEventId", "lead_event_id"),
+            "meta_lead_id": _first_present(attribution, "leadId", "lead_id", "facebookLeadId", "facebook_lead_id", "metaLeadId", "meta_lead_id"),
             "campaign_id": _first_present(attribution, "campaignId", "campaign_id"),
             "campaign_name": _first_present(attribution, "campaignName", "campaign_name", "utmCampaign", "utm_campaign"),
             "adset_id": _first_present(attribution, "adsetId", "adset_id", "utmTerm", "utm_term"),
@@ -1503,6 +1531,12 @@ def _extract_contact_meta_attribution(contact: dict[str, Any]) -> dict[str, str]
             "ad_id": _first_present(attribution, "adId", "ad_id", "utmContent", "utm_content"),
             "ad_name": _first_present(attribution, "adName", "ad_name"),
             "source": _first_present(attribution, "source", "utmSource", "utm_source"),
+            "utm_source": _first_present(attribution, "utmSource", "utm_source"),
+            "utm_medium": _first_present(attribution, "utmMedium", "utm_medium"),
+            "utm_campaign": _first_present(attribution, "utmCampaign", "utm_campaign"),
+            "fbclid": _first_present(attribution, "fbclid"),
+            "fbc": _first_present(attribution, "fbc"),
+            "fbp": _first_present(attribution, "fbp"),
         }
         raw_url = attribution.get("url") or attribution.get("utmUrl")
         query_values = {
@@ -1510,6 +1544,10 @@ def _extract_contact_meta_attribution(contact: dict[str, Any]) -> dict[str, str]
             "adset_id": _extract_query_value(raw_url, "utm_term"),
             "ad_id": _extract_query_value(raw_url, "utm_content"),
             "source": _extract_query_value(raw_url, "utm_source"),
+            "utm_source": _extract_query_value(raw_url, "utm_source"),
+            "utm_medium": _extract_query_value(raw_url, "utm_medium"),
+            "utm_campaign": _extract_query_value(raw_url, "utm_campaign"),
+            "fbclid": _extract_query_value(raw_url, "fbclid"),
             "landing_page_url": str(raw_url).strip() if raw_url else "",
         }
         for source_values in (values, query_values):
@@ -1517,6 +1555,34 @@ def _extract_contact_meta_attribution(contact: dict[str, Any]) -> dict[str, str]
                 if value and not attribution_data.get(key):
                     attribution_data[key] = str(value).strip()
     return attribution_data
+
+
+def _daily_attribution_evidence(attribution: dict[str, str], meta_match_level: str) -> tuple[str, str]:
+    for key, evidence_type in (
+        ("meta_lead_id", "meta_lead_id"),
+        ("fbclid", "fbclid"),
+        ("fbc", "fbc"),
+        ("fbp", "fbp"),
+        ("utm_campaign", "utm_campaign"),
+        ("utm_source", "utm_source"),
+        ("utm_medium", "utm_medium"),
+        ("ad_id", "meta_ad_id"),
+    ):
+        value = str(attribution.get(key) or "").strip()
+        if value:
+            return evidence_type, value
+    return "", ""
+
+
+def _daily_attribution_method(attribution: dict[str, str], meta_match_level: str) -> str:
+    evidence_type, _ = _daily_attribution_evidence(attribution, meta_match_level)
+    if not evidence_type:
+        return ""
+    if meta_match_level == "ad":
+        return "direct_meta_ad_evidence"
+    if meta_match_level in {"adset", "campaign"}:
+        return "partial_meta_evidence"
+    return "raw_attribution_without_meta_snapshot_match"
 
 
 def _meta_value(row: dict[str, Any] | None, key: str, default: Any = "") -> Any:

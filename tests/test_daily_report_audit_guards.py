@@ -398,8 +398,10 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         self.assertEqual(1200, result["qa"]["meta_spend_huf"])
         self.assertEqual(LEAD_COHORT_COLUMNS, list(result["lead_rows"][0].keys()))
         self.assertEqual(2, len(result["lead_rows"]))
-        self.assertEqual("lead_1:2", result["qa"]["duplicate_lead_ids"])
-        lead_2 = [row for row in result["lead_rows"] if row["lead_id"] == "lead_2"][0]
+        self.assertIn(":2", result["qa"]["duplicate_lead_ids"])
+        self.assertEqual("deterministic_technical_key", result["lead_rows"][0]["lead_id_source"])
+        self.assertEqual("contact_source_timestamp_hash", result["lead_rows"][0]["lead_id_method"])
+        lead_2 = [row for row in result["lead_rows"] if row["contact_id"] == "lead_2"][0]
         self.assertEqual("unattributed", lead_2["attribution_status"])
         self.assertEqual("", lead_2["ad_id"])
         self.assertEqual("datetime", result["lead_rows"][0]["lead_created_precision"])
