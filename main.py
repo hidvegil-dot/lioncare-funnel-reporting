@@ -16,6 +16,7 @@ from daily_split_exports import (
     build_split_exports_from_daily_lead_rows,
     current_budapest_timestamp,
     write_daily_split_csvs,
+    write_daily_split_qa_report,
 )
 from report_storage import persist_daily_report_history
 from report_builder import (
@@ -325,6 +326,7 @@ def main() -> None:
                 meta_data=meta_data,
                 exported_at=current_budapest_timestamp(),
                 appointments=current_crm_appointments or [],
+                opportunities=current_crm_opportunities or [],
                 account_id=meta_config.ad_account_id if meta_config else "",
             )
 
@@ -563,12 +565,19 @@ def main() -> None:
             pdf_path = None
             write_daily_lead_csv_report(csv_path=csv_path, rows=daily_lead_csv_rows or [])
             if daily_split_exports:
-                write_daily_split_csvs(
+                ad_path, lead_path, event_path = write_daily_split_csvs(
                     output_dir=output_dir,
                     report_date=start_date,
                     ad_rows=daily_split_exports["ad_rows"],
                     lead_rows=daily_split_exports["lead_rows"],
                     event_rows=daily_split_exports["event_rows"],
+                )
+                write_daily_split_qa_report(
+                    output_dir=output_dir,
+                    qa=daily_split_exports["qa"],
+                    ad_path=ad_path,
+                    lead_path=lead_path,
+                    event_path=event_path,
                 )
             write_html_report(
                 html_path=html_path,

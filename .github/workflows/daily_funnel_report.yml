@@ -26,6 +26,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       REPORT_DATE: ${{ inputs.report_date }}
       GHL_API_KEY: ${{ secrets.GHL_API_KEY }}
+      GHL_PRIVATE_INTEGRATION_TOKEN: ${{ secrets.GHL_PRIVATE_INTEGRATION_TOKEN }}
       GHL_LOCATION_ID: ${{ secrets.GHL_LOCATION_ID }}
       GHL_BASE_URL: ${{ secrets.GHL_BASE_URL }}
       GHL_API_VERSION: ${{ secrets.GHL_API_VERSION }}
@@ -85,7 +86,6 @@ jobs:
         run: |
           missing=0
           for name in \
-            GHL_API_KEY \
             GHL_LOCATION_ID \
             GHL_BASE_URL \
             GA4_PROPERTY_ID \
@@ -107,6 +107,10 @@ jobs:
               missing=1
             fi
           done
+          if [ -z "${GHL_PRIVATE_INTEGRATION_TOKEN:-}" ] && [ -z "${GHL_API_KEY:-}" ]; then
+            echo "::error title=Missing GitHub secret::GHL_PRIVATE_INTEGRATION_TOKEN or GHL_API_KEY is required"
+            missing=1
+          fi
           exit "$missing"
       - name: Write Google credentials
         if: steps.budapest_time.outputs.run_report == 'true'
@@ -137,6 +141,7 @@ jobs:
           test -s "daily_ad_performance_${report_date}.csv"
           test -s "lead_cohort_${report_date}.csv"
           test -s "appointment_events_${report_date}.csv"
+          test -s backfill_qa_report.csv
           test -s report_run.log
       - name: Upload reports to OneDrive
         if: steps.budapest_time.outputs.run_report == 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
@@ -155,6 +160,7 @@ jobs:
           rclone copyto "daily_ad_performance_${report_date}.csv" "onedrive:${daily_path}/daily_ad_performance_${report_date}.csv"
           rclone copyto "lead_cohort_${report_date}.csv" "onedrive:${daily_path}/lead_cohort_${report_date}.csv"
           rclone copyto "appointment_events_${report_date}.csv" "onedrive:${daily_path}/appointment_events_${report_date}.csv"
+          rclone copyto "backfill_qa_report.csv" "onedrive:${daily_path}/backfill_qa_report.csv"
           rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/latest_daily_funnel_report.html"
           rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/latest_daily_funnel_report.csv"
           rclone copyto "daily_ad_performance_${report_date}.csv" "onedrive:${daily_path}/latest_daily_ad_performance.csv"
@@ -172,4 +178,5 @@ jobs:
             daily_ad_performance_*.csv
             lead_cohort_*.csv
             appointment_events_*.csv
+            backfill_qa_report.csv
             report_run.log

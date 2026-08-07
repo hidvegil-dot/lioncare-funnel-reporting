@@ -43,9 +43,19 @@ Fields sourced from GHL appointment records when available:
 - `event_created_precision`
 - `appointment_start_at`
 - `appointment_start_precision`
+- `previous_status`
 - `new_status`
 
-For corrected backfills, appointment records are requested from GHL per affected contact when credentials are available. If GHL does not expose a required appointment/source record, the day is marked `insufficient_source`; appointment events are not synthesized from lead status.
+`booking_created` uses `dateAdded` or `createdAt`. Status events use an explicit
+GHL status-history entry or one of `statusUpdatedAt`, `statusChangedAt`, and
+`lastStatusChangeAt`. Generic record-update fields and appointment start time
+are never substituted for an event time. The Budapest-local date of that event
+time selects the daily file.
+
+For corrected backfills, appointment records are requested from GHL per
+affected contact when credentials are available. If GHL does not expose a
+required appointment/source record, QA documents the missing source and no
+event is synthesized from the current lead or appointment status.
 
 ## GHL Opportunities
 

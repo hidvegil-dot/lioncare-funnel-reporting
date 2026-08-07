@@ -62,16 +62,38 @@ Fields:
 
 ## `appointment_events_YYYY-MM-DD.csv`
 
-Grain: one row per appointment/status event.
+Grain: one row per real booking or meeting-status change. The daily partition is
+the Europe/Budapest date of `event_created_at`; neither lead creation date nor
+the scheduled appointment start date controls the output file.
 
-Fields come from GHL appointment records. Event type is derived from appointment status:
+Fields come from GHL appointment records. A status event is exported only when
+GHL provides status history or a dedicated status-change timestamp. The current
+appointment status alone is not historical evidence.
 
 - `booking_created`
+- `rescheduled`
 - `showed`
 - `no_show`
 - `cancelled`
 
-`event_created_precision` and `appointment_start_precision` are mandatory and may only be `datetime` or `date`. Reschedules can only be identified when GHL exposes prior appointment state or separate appointment records.
+Status transitions are fixed: booking `empty -> booked`, reschedule `booked ->
+booked`, cancellation `booked -> cancelled`, show `booked -> showed`, and no-show
+`booked -> no_show`. `event_created_precision` and
+`appointment_start_precision` are mandatory and may only be `datetime` or
+`date`. Reschedules can only be identified when GHL exposes a real reschedule
+event or dedicated status-change timestamp.
+
+`lead_id` uses a direct appointment lead/opportunity link first. A unique
+contact-to-opportunity relation may be used as a documented deterministic
+fallback. Otherwise `lead_id` remains blank and QA reports the missing link.
+
+## `backfill_qa_report.csv`
+
+Grain: one row for the current daily report run. Every successful daily export
+recreates this file in the same output directory, so rerunning a date replaces
+the prior QA row instead of appending a duplicate. The daily GitHub Actions
+workflow verifies the file and uploads it into the matching OneDrive date
+folder.
 
 ## Validation Rules
 
@@ -84,7 +106,10 @@ Hard failures:
 - derived campaign name in raw UTM field;
 - `attributed` lead without auditable evidence;
 - undocumented `lead_id = contact_id`;
-- booked/showed/no-show/cancelled lead without appointment source or documented insufficient source.
+- appointment event outside the requested Budapest-local report date;
+- `booking_created` carrying a later final status;
+- future appointment marked `showed` or `no_show`;
+- missing required appointment-event column.
 
 QA warnings:
 

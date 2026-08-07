@@ -94,14 +94,14 @@ LEAD_COHORT_COLUMNS = [
 
 APPOINTMENT_EVENTS_COLUMNS = [
     "event_id",
-    "lead_id",
-    "contact_id",
-    "appointment_id",
     "event_type",
     "event_created_at",
     "event_created_precision",
+    "appointment_id",
     "appointment_start_at",
     "appointment_start_precision",
+    "lead_id",
+    "contact_id",
     "previous_status",
     "new_status",
     "data_as_of",
@@ -120,6 +120,9 @@ BACKFILL_QA_COLUMNS = [
     "unique_ads",
     "unique_leads",
     "appointment_events",
+    "appointment_events_excluded_other_dates",
+    "unlinked_appointment_events",
+    "missing_appointment_source_data",
     "duplicate_ad_keys",
     "duplicate_lead_ids",
     "duplicate_event_ids",
@@ -155,6 +158,19 @@ NON_NEGATIVE_AD_METRICS = [
     "landing_page_views",
     "registration_leads",
 ]
+
+APPOINTMENT_EVENT_TRANSITIONS = {
+    "booking_created": ("", "booked"),
+    "rescheduled": ("booked", "booked"),
+    "cancelled": ("booked", "cancelled"),
+    "showed": ("booked", "showed"),
+    "no_show": ("booked", "no_show"),
+}
+APPOINTMENT_STATUS_TIMESTAMP_FIELDS = (
+    "statusUpdatedAt",
+    "statusChangedAt",
+    "lastStatusChangeAt",
+)
 
 
 class ExportValidationError(RuntimeError):
@@ -233,6 +249,7 @@ def build_split_exports_from_daily_lead_rows(
     meta_data: dict[str, Any] | None,
     exported_at: str,
     appointments: list[dict[str, Any]] | None = None,
+    opportunities: list[dict[str, Any]] | None = None,
     account_id: str = "",
 ) -> dict[str, Any]:
     ad_rows, ad_conflicts = build_daily_ad_performance_rows(
@@ -246,11 +263,15 @@ def build_split_exports_from_daily_lead_rows(
         exported_at=exported_at,
         data_as_of=exported_at,
     )
+    appointment_audit: dict[str, Any] = {}
     event_rows = build_appointment_event_rows(
+        report_date=report_date,
         appointments=appointments or [],
         lead_rows=lead_rows,
+        opportunities=opportunities or [],
         exported_at=exported_at,
         data_as_of=exported_at,
+        audit=appointment_audit,
     )
     enrich_lead_rows_from_appointment_events(lead_rows, event_rows)
     validate_lead_rows(lead_rows)
@@ -266,6 +287,7 @@ def build_split_exports_from_daily_lead_rows(
         event_rows=event_rows,
         duplicate_leads=duplicate_leads,
         ad_conflicts=ad_conflicts,
+        appointment_audit=appointment_audit,
     )
     return {"ad_rows": ad_rows, "lead_rows": lead_rows, "event_rows": event_rows, "qa": qa}
 
@@ -277,6 +299,7 @@ def build_split_exports_from_combined_csv(
     exported_at: str,
     account_id: str = "",
     appointments: list[dict[str, Any]] | None = None,
+    opportunities: list[dict[str, Any]] | None = None,
     require_event_consistency: bool = False,
 ) -> dict[str, Any]:
     source_rows = read_csv_rows(source_path)
@@ -293,11 +316,15 @@ def build_split_exports_from_combined_csv(
         exported_at=exported_at,
         data_as_of=exported_at,
     )
+    appointment_audit: dict[str, Any] = {}
     event_rows = build_appointment_event_rows(
+        report_date=report_date,
         appointments=appointments or [],
         lead_rows=lead_rows,
+        opportunities=opportunities or [],
         exported_at=exported_at,
         data_as_of=exported_at,
+        audit=appointment_audit,
     )
     enrich_lead_rows_from_appointment_events(lead_rows, event_rows)
     validate_lead_rows(lead_rows)
@@ -314,6 +341,7 @@ def build_split_exports_from_combined_csv(
         event_rows=event_rows,
         duplicate_leads=duplicate_leads,
         ad_conflicts=ad_conflicts,
+        appointment_audit=appointment_audit,
     )
     return {"ad_rows": ad_rows, "lead_rows": lead_rows, "event_rows": event_rows, "qa": qa}
 
@@ -385,17 +413,37 @@ def build_lead_cohort_rows(
 
 def build_appointment_event_rows(
     *,
+    report_date: date,
     appointments: list[dict[str, Any]],
     lead_rows: list[dict[str, Any]],
+    opportunities: list[dict[str, Any]] | None = None,
     exported_at: str,
     data_as_of: str,
+    audit: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    lead_by_contact = {_clean(row.get("contact_id")): _clean(row.get("lead_id")) for row in lead_rows}
-    events = []
+    audit_data = audit if audit is not None else {}
+    audit_data.update(
+        {
+            "source_appointments": len(appointments),
+            "candidate_events": 0,
+            "excluded_other_date_events": 0,
+            "unlinked_appointment_events": 0,
+            "missing_booking_created_timestamps": 0,
+            "missing_status_event_timestamps": 0,
+            "invalid_event_timestamps": 0,
+            "lead_link_methods": Counter(),
+        }
+    )
+    opportunity_by_contact = _unique_opportunity_ids_by_contact(opportunities or [], lead_rows)
+    events: list[dict[str, Any]] = []
     for appointment in appointments:
         contact_id = _appointment_contact_id(appointment)
-        lead_id = lead_by_contact.get(contact_id, contact_id)
-        appointment_id = _clean(appointment.get("id") or appointment.get("_id"))
+        appointment_id = _crm_id(appointment.get("id") or appointment.get("_id"), field="appointment_id")
+        lead_id, link_method = _appointment_lead_id(
+            appointment,
+            contact_id=contact_id,
+            opportunity_by_contact=opportunity_by_contact,
+        )
         start_at, start_precision = _value_and_precision(appointment.get("startTime") or appointment.get("date"))
         created_at, created_precision = _value_and_precision(appointment.get("dateAdded") or appointment.get("createdAt"))
         status = _clean(
@@ -404,53 +452,230 @@ def build_appointment_event_rows(
             or appointment.get("calendarStatus")
             or appointment.get("appoinmentStatus")
         ).lower()
-        if created_at or start_at:
-            events.append(
-                _appointment_event_row(
+        if created_at and created_precision in {"date", "datetime"}:
+            _append_daily_event(
+                events,
+                report_date=report_date,
+                audit=audit_data,
+                row=_appointment_event_row(
                     appointment_id=appointment_id,
                     contact_id=contact_id,
                     lead_id=lead_id,
                     event_type="booking_created",
-                    event_created_at=created_at or start_at,
-                    event_created_precision=created_precision or start_precision,
+                    event_created_at=created_at,
+                    event_created_precision=created_precision,
                     appointment_start_at=start_at,
                     appointment_start_precision=start_precision,
                     previous_status="",
-                    new_status=status or "booked",
+                    new_status="booked",
                     data_as_of=data_as_of,
                     exported_at=exported_at,
-                )
+                ),
             )
+            audit_data["lead_link_methods"][link_method or "unlinked"] += 1
+        elif created_at:
+            audit_data["invalid_event_timestamps"] += 1
+        else:
+            audit_data["missing_booking_created_timestamps"] += 1
 
-        status_event_type = _appointment_status_event_type(status)
-        if status_event_type:
-            status_changed_at, status_changed_precision = _value_and_precision(
-                appointment.get("statusUpdatedAt")
-                or appointment.get("statusChangedAt")
-                or appointment.get("updatedAt")
-                or appointment.get("dateUpdated")
-                or appointment.get("lastStatusChangeAt")
-                or appointment.get("dateAdded")
-                or appointment.get("createdAt")
-            )
-            events.append(
-                _appointment_event_row(
+        history_events = _appointment_status_history_events(appointment)
+        status_event_added = False
+        for history_status, history_timestamp in history_events:
+            event_type = _appointment_status_event_type(history_status)
+            if not event_type:
+                continue
+            event_at, event_precision = _value_and_precision(history_timestamp)
+            if not event_at or event_precision not in {"date", "datetime"}:
+                audit_data["invalid_event_timestamps"] += 1
+                continue
+            previous_status, new_status = APPOINTMENT_EVENT_TRANSITIONS[event_type]
+            _append_daily_event(
+                events,
+                report_date=report_date,
+                audit=audit_data,
+                row=_appointment_event_row(
                     appointment_id=appointment_id,
                     contact_id=contact_id,
                     lead_id=lead_id,
-                    event_type=status_event_type,
-                    event_created_at=status_changed_at or created_at or start_at,
-                    event_created_precision=status_changed_precision or created_precision or start_precision,
+                    event_type=event_type,
+                    event_created_at=event_at,
+                    event_created_precision=event_precision,
                     appointment_start_at=start_at,
                     appointment_start_precision=start_precision,
-                    previous_status="",
-                    new_status=status,
+                    previous_status=previous_status,
+                    new_status=new_status,
                     data_as_of=data_as_of,
                     exported_at=exported_at,
-                )
+                ),
             )
-    deduped = {row["event_id"]: row for row in events if _clean(row.get("event_id"))}
-    return sorted(deduped.values(), key=lambda row: row["event_id"])
+            audit_data["lead_link_methods"][link_method or "unlinked"] += 1
+            status_event_added = True
+
+        status_event_type = _appointment_status_event_type(status)
+        if status_event_type and not status_event_added:
+            status_changed_at, status_changed_precision = _value_and_precision(
+                next((appointment.get(field) for field in APPOINTMENT_STATUS_TIMESTAMP_FIELDS if appointment.get(field)), "")
+            )
+            if status_changed_at and status_changed_precision in {"date", "datetime"}:
+                previous_status, new_status = APPOINTMENT_EVENT_TRANSITIONS[status_event_type]
+                _append_daily_event(
+                    events,
+                    report_date=report_date,
+                    audit=audit_data,
+                    row=_appointment_event_row(
+                        appointment_id=appointment_id,
+                        contact_id=contact_id,
+                        lead_id=lead_id,
+                        event_type=status_event_type,
+                        event_created_at=status_changed_at,
+                        event_created_precision=status_changed_precision,
+                        appointment_start_at=start_at,
+                        appointment_start_precision=start_precision,
+                        previous_status=previous_status,
+                        new_status=new_status,
+                        data_as_of=data_as_of,
+                        exported_at=exported_at,
+                    ),
+                )
+                audit_data["lead_link_methods"][link_method or "unlinked"] += 1
+            elif status_changed_at:
+                audit_data["invalid_event_timestamps"] += 1
+            else:
+                audit_data["missing_status_event_timestamps"] += 1
+
+    deduped = _dedupe_appointment_event_rows(events)
+    validate_appointment_event_rows(deduped, report_date=report_date)
+    audit_data["unlinked_appointment_events"] = sum(1 for row in deduped if not _clean(row.get("lead_id")))
+    audit_data["lead_link_methods"] = dict(sorted(audit_data["lead_link_methods"].items()))
+    return sorted(
+        deduped,
+        key=lambda row: (
+            _clean(row.get("event_created_at")),
+            _clean(row.get("appointment_id")),
+            _clean(row.get("event_type")),
+        ),
+    )
+
+
+def _append_daily_event(
+    events: list[dict[str, Any]],
+    *,
+    report_date: date,
+    audit: dict[str, Any],
+    row: dict[str, Any],
+) -> None:
+    audit["candidate_events"] += 1
+    if _event_budapest_date(row) != report_date:
+        audit["excluded_other_date_events"] += 1
+        return
+    events.append(row)
+
+
+def repair_legacy_appointment_event_rows(
+    *,
+    report_date: date,
+    legacy_rows: list[dict[str, Any]],
+    historical_lead_rows: list[dict[str, Any]],
+    exported_at: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Conservatively repair an old daily event export without inventing history.
+
+    The legacy file did not preserve timestamp provenance for status changes, so
+    only booking_created rows with a distinct creation and appointment start
+    timestamp are reusable as evidence. Status rows must be rebuilt from live
+    GHL status history or a dedicated status-change timestamp instead.
+    """
+    required_source_columns = {
+        "event_id",
+        "event_type",
+        "event_created_at",
+        "event_created_precision",
+        "appointment_id",
+        "appointment_start_at",
+        "appointment_start_precision",
+        "contact_id",
+    }
+    if legacy_rows:
+        missing = sorted(required_source_columns - set(legacy_rows[0]))
+        if missing:
+            raise ExportValidationError(f"Missing legacy appointment event columns: {'|'.join(missing)}")
+
+    opportunity_by_contact = _unique_opportunity_ids_by_contact([], historical_lead_rows)
+    repaired: list[dict[str, Any]] = []
+    audit: dict[str, Any] = {
+        "report_date": report_date.isoformat(),
+        "source_records": len(legacy_rows),
+        "kept_events": 0,
+        "removed_other_date_records": 0,
+        "excluded_unverifiable_same_day_records": 0,
+        "unlinked_appointment_events": 0,
+        "lead_link_methods": Counter(),
+        "missing_source_data": [
+            "legacy_export_has_no_reliable_status_change_timestamp_provenance",
+            "status_events_require_live_GHL_status_history_or_dedicated_status_timestamp",
+        ],
+    }
+    for row in legacy_rows:
+        event_value, event_precision = _value_and_precision(row.get("event_created_at"))
+        if not event_value or event_precision not in {"date", "datetime"}:
+            audit["excluded_unverifiable_same_day_records"] += 1
+            continue
+        event_date = _event_budapest_date(
+            {
+                "event_created_at": event_value,
+                "event_created_precision": event_precision,
+            }
+        )
+        if event_date != report_date:
+            audit["removed_other_date_records"] += 1
+            continue
+        if _clean(row.get("event_type")) != "booking_created":
+            audit["excluded_unverifiable_same_day_records"] += 1
+            continue
+
+        start_at, start_precision = _value_and_precision(row.get("appointment_start_at"))
+        if event_value == start_at:
+            audit["excluded_unverifiable_same_day_records"] += 1
+            continue
+        appointment_id = _crm_id(row.get("appointment_id"), field="appointment_id")
+        contact_id = _crm_id(row.get("contact_id"), field="contact_id")
+        lead_id = opportunity_by_contact.get(contact_id, "")
+        link_method = "unique_historical_contact_opportunity" if lead_id else "unlinked"
+        audit["lead_link_methods"][link_method] += 1
+        repaired.append(
+            _appointment_event_row(
+                appointment_id=appointment_id,
+                contact_id=contact_id,
+                lead_id=lead_id,
+                event_type="booking_created",
+                event_created_at=event_value,
+                event_created_precision=event_precision,
+                appointment_start_at=start_at,
+                appointment_start_precision=start_precision,
+                previous_status="",
+                new_status="booked",
+                data_as_of=_clean(row.get("data_as_of")) or exported_at,
+                exported_at=exported_at,
+            )
+        )
+
+    repaired = _dedupe_appointment_event_rows(repaired)
+    validate_appointment_event_rows(repaired, report_date=report_date)
+    repaired.sort(
+        key=lambda row: (
+            _clean(row.get("event_created_at")),
+            _clean(row.get("appointment_id")),
+            _clean(row.get("event_type")),
+        )
+    )
+    audit["kept_events"] = len(repaired)
+    audit["unlinked_appointment_events"] = sum(1 for row in repaired if not row["lead_id"])
+    audit["lead_link_methods"] = dict(sorted(audit["lead_link_methods"].items()))
+    if audit["unlinked_appointment_events"]:
+        audit["missing_source_data"].append(
+            f"appointments_without_unique_lead_or_opportunity_link:{audit['unlinked_appointment_events']}"
+        )
+    return repaired, audit
 
 
 def _appointment_event_row(
@@ -471,19 +696,222 @@ def _appointment_event_row(
     event_base = appointment_id or contact_id or lead_id
     return {
         "event_id": f"{event_base}:{event_type}:{event_created_at or appointment_start_at}",
-        "lead_id": lead_id,
-        "contact_id": contact_id,
-        "appointment_id": appointment_id,
         "event_type": event_type,
         "event_created_at": event_created_at,
         "event_created_precision": event_created_precision,
+        "appointment_id": appointment_id,
         "appointment_start_at": appointment_start_at,
         "appointment_start_precision": appointment_start_precision,
+        "lead_id": lead_id,
+        "contact_id": contact_id,
         "previous_status": previous_status,
         "new_status": new_status,
         "data_as_of": data_as_of,
         "exported_at": exported_at,
     }
+
+
+def _unique_opportunity_ids_by_contact(
+    opportunities: list[dict[str, Any]],
+    lead_rows: list[dict[str, Any]],
+) -> dict[str, str]:
+    candidates: dict[str, set[str]] = {}
+    for opportunity in opportunities:
+        nested_contact = opportunity.get("contact")
+        contact_value = opportunity.get("contactId") or opportunity.get("contact_id")
+        if not contact_value and isinstance(nested_contact, dict):
+            contact_value = nested_contact.get("id") or nested_contact.get("_id")
+        contact_id = _crm_id(contact_value, field="contact_id")
+        opportunity_id = _crm_id(opportunity.get("id") or opportunity.get("_id"), field="opportunity_id")
+        if contact_id and opportunity_id:
+            candidates.setdefault(contact_id, set()).add(opportunity_id)
+    for row in lead_rows:
+        contact_id = _crm_id(row.get("contact_id"), field="contact_id")
+        opportunity_id = _crm_id(row.get("opportunity_id"), field="opportunity_id")
+        if contact_id and opportunity_id:
+            candidates.setdefault(contact_id, set()).add(opportunity_id)
+    return {contact_id: next(iter(values)) for contact_id, values in candidates.items() if len(values) == 1}
+
+
+def _appointment_lead_id(
+    appointment: dict[str, Any],
+    *,
+    contact_id: str,
+    opportunity_by_contact: dict[str, str],
+) -> tuple[str, str]:
+    for field in ("opportunityId", "opportunity_id", "leadId", "lead_id"):
+        value = _crm_id(appointment.get(field), field="lead_id")
+        if value and value != contact_id:
+            return value, f"appointment.{field}"
+    for field in ("opportunity", "lead"):
+        nested = appointment.get(field)
+        if isinstance(nested, dict):
+            value = _crm_id(nested.get("id") or nested.get("_id"), field="lead_id")
+            if value and value != contact_id:
+                return value, f"appointment.{field}.id"
+    fallback = opportunity_by_contact.get(contact_id, "")
+    if fallback and fallback != contact_id:
+        return fallback, "unique_contact_opportunity"
+    return "", ""
+
+
+def _appointment_status_history_events(appointment: dict[str, Any]) -> list[tuple[str, Any]]:
+    events: list[tuple[str, Any]] = []
+    for field in ("statusHistory", "appointmentStatusHistory"):
+        history = appointment.get(field)
+        if not isinstance(history, list):
+            continue
+        for item in history:
+            if not isinstance(item, dict):
+                continue
+            status = _clean(
+                item.get("appointmentStatus")
+                or item.get("status")
+                or item.get("newStatus")
+                or item.get("eventType")
+                or item.get("type")
+            ).lower()
+            timestamp = next(
+                (
+                    item.get(key)
+                    for key in (
+                        "statusUpdatedAt",
+                        "statusChangedAt",
+                        "occurredAt",
+                        "timestamp",
+                        "createdAt",
+                        "dateAdded",
+                    )
+                    if item.get(key)
+                ),
+                "",
+            )
+            if status and timestamp:
+                events.append((status, timestamp))
+    return events
+
+
+def _dedupe_appointment_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        event_id = _clean(row.get("event_id"))
+        if event_id in grouped:
+            if grouped[event_id] != row:
+                raise ExportValidationError(f"Conflicting duplicate appointment event_id: {event_id}")
+            continue
+        grouped[event_id] = row
+    return list(grouped.values())
+
+
+def validate_appointment_event_rows(rows: list[dict[str, Any]], *, report_date: date) -> None:
+    event_ids: list[str] = []
+    for index, row in enumerate(rows, start=2):
+        missing_columns = [column for column in APPOINTMENT_EVENTS_COLUMNS if column not in row]
+        if missing_columns:
+            raise ExportValidationError(
+                f"Missing appointment event columns at row {index}: {'|'.join(missing_columns)}"
+            )
+        for field in ("event_id", "appointment_id", "lead_id", "contact_id"):
+            value = row.get(field)
+            if not isinstance(value, str):
+                raise ExportValidationError(f"Appointment event ID is not text at row {index}: {field}")
+            _validate_crm_id_text(value, field=field)
+        if not row["event_id"] or not row["appointment_id"] or not row["contact_id"]:
+            raise ExportValidationError(f"Missing required appointment event ID at row {index}")
+        if row["lead_id"] and row["lead_id"] == row["contact_id"]:
+            raise ExportValidationError(f"lead_id equals contact_id without a real lead link at row {index}")
+
+        event_type = _clean(row.get("event_type"))
+        if event_type not in APPOINTMENT_EVENT_TRANSITIONS:
+            raise ExportValidationError(f"Unsupported appointment event_type at row {index}: {event_type}")
+        expected_previous, expected_new = APPOINTMENT_EVENT_TRANSITIONS[event_type]
+        if _clean(row.get("previous_status")) != expected_previous or _clean(row.get("new_status")) != expected_new:
+            raise ExportValidationError(f"Invalid status transition for {event_type} at row {index}")
+        if event_type == "booking_created" and _clean(row.get("new_status")) in {"showed", "no_show", "cancelled"}:
+            raise ExportValidationError(f"booking_created contains a later final status at row {index}")
+
+        if _event_budapest_date(row) != report_date:
+            raise ExportValidationError(
+                f"Appointment event outside report date {report_date.isoformat()} at row {index}"
+            )
+        _validate_timestamp_precision(row, "event_created_at", "event_created_precision", index)
+        _validate_timestamp_precision(row, "appointment_start_at", "appointment_start_precision", index, allow_blank=True)
+        if _row_has_artificial_midnight(row):
+            raise ExportValidationError(f"Artificial midnight appointment timestamp at row {index}")
+        if event_type in {"showed", "no_show"} and _appointment_is_future_at_event(row):
+            raise ExportValidationError(f"Future meeting marked {event_type} at row {index}")
+        event_ids.append(row["event_id"])
+    if len(event_ids) != len(set(event_ids)):
+        raise ExportValidationError("Duplicate appointment event_id remains")
+
+
+def _validate_timestamp_precision(
+    row: dict[str, Any],
+    value_field: str,
+    precision_field: str,
+    row_number: int,
+    *,
+    allow_blank: bool = False,
+) -> None:
+    value = _clean(row.get(value_field))
+    precision = _clean(row.get(precision_field))
+    if not value and allow_blank and not precision:
+        return
+    if precision == "date" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ExportValidationError(f"Invalid date precision for {value_field} at row {row_number}")
+    if precision == "datetime":
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ExportValidationError(f"Invalid datetime in {value_field} at row {row_number}") from exc
+        if parsed.tzinfo is None:
+            raise ExportValidationError(f"Timezone missing from {value_field} at row {row_number}")
+        return
+    if precision not in {"date", "datetime"}:
+        raise ExportValidationError(f"Missing precision for {value_field} at row {row_number}")
+
+
+def _event_budapest_date(row: dict[str, Any]) -> date:
+    value = _clean(row.get("event_created_at"))
+    precision = _clean(row.get("event_created_precision"))
+    if precision == "date":
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise ExportValidationError(f"Invalid date-only event_created_at: {value}") from exc
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ExportValidationError(f"Invalid event_created_at: {value}") from exc
+    if parsed.tzinfo is None:
+        raise ExportValidationError(f"Timezone missing from event_created_at: {value}")
+    return parsed.astimezone(BUDAPEST_TZ).date()
+
+
+def _appointment_is_future_at_event(row: dict[str, Any]) -> bool:
+    event_value = _clean(row.get("event_created_at"))
+    start_value = _clean(row.get("appointment_start_at"))
+    if not start_value:
+        return False
+    event_precision = _clean(row.get("event_created_precision"))
+    start_precision = _clean(row.get("appointment_start_precision"))
+    if event_precision == "date" or start_precision == "date":
+        return date.fromisoformat(start_value[:10]) > date.fromisoformat(event_value[:10])
+    event_at = datetime.fromisoformat(event_value.replace("Z", "+00:00")).astimezone(BUDAPEST_TZ)
+    start_at = datetime.fromisoformat(start_value.replace("Z", "+00:00")).astimezone(BUDAPEST_TZ)
+    return start_at > event_at
+
+
+def _row_has_artificial_midnight(row: dict[str, Any]) -> bool:
+    for value_field, precision_field in (
+        ("event_created_at", "event_created_precision"),
+        ("appointment_start_at", "appointment_start_precision"),
+    ):
+        value = _clean(row.get(value_field))
+        precision = _clean(row.get(precision_field))
+        if "T00:00:00" in value and precision != "datetime":
+            return True
+    return False
 
 
 def dedupe_ad_performance_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -517,8 +945,10 @@ def build_split_export_qa(
     event_rows: list[dict[str, Any]],
     duplicate_leads: dict[str, int],
     ad_conflicts: list[dict[str, Any]],
+    appointment_audit: dict[str, Any] | None = None,
     notes: str = "",
 ) -> dict[str, Any]:
+    appointment_audit = appointment_audit or {}
     fake_midnight = _fake_midnight_count(lead_rows + event_rows)
     missing_required = _missing_required_fields(ad_rows, lead_rows, event_rows)
     attributed = sum(1 for row in lead_rows if row.get("attribution_status") == "attributed")
@@ -541,6 +971,9 @@ def build_split_export_qa(
         "unique_ads": len({tuple(_clean(row.get(column)) for column in AD_KEY_COLUMNS) for row in ad_rows}),
         "unique_leads": len(lead_rows),
         "appointment_events": len(event_rows),
+        "appointment_events_excluded_other_dates": appointment_audit.get("excluded_other_date_events", 0),
+        "unlinked_appointment_events": appointment_audit.get("unlinked_appointment_events", 0),
+        "missing_appointment_source_data": _appointment_source_gap_notes(appointment_audit),
         "duplicate_ad_keys": _duplicate_ad_key_count(ad_rows),
         "duplicate_lead_ids": ";".join(f"{lead_id}:{count}" for lead_id, count in sorted(duplicate_leads.items())),
         "duplicate_event_ids": _duplicate_event_id_count(event_rows),
@@ -599,20 +1032,25 @@ def validate_lead_rows(rows: list[dict[str, Any]]) -> None:
 
 
 def validate_event_consistency(*, lead_rows: list[dict[str, Any]], event_rows: list[dict[str, Any]]) -> None:
+    """Validate only contradictions visible inside the daily event partition.
+
+    A current lead snapshot may legitimately refer to a booking or final status
+    that happened on an earlier day, so its full history is not required in the
+    current daily event file.
+    """
     event_ids = [_clean(row.get("event_id")) for row in event_rows]
     if len(event_ids) != len(set(event_ids)):
         raise ExportValidationError("Duplicate appointment event_id remains")
-    events_by_lead: dict[str, set[str]] = {}
+    terminal_events_by_appointment: dict[str, set[str]] = {}
     for event in event_rows:
-        events_by_lead.setdefault(_clean(event.get("lead_id")), set()).add(_clean(event.get("event_type")))
-    for lead in lead_rows:
-        lead_id = _clean(lead.get("lead_id"))
-        event_types = events_by_lead.get(lead_id, set())
-        if _clean(lead.get("first_appointment_at")) and "booking_created" not in event_types:
-            raise ExportValidationError(f"Lead has appointment but no booking event: {lead_id}")
-        status = _clean(lead.get("current_status")).lower()
-        if "show" in status and "showed" not in event_types and not _clean(lead.get("showed_at")):
-            raise ExportValidationError(f"Lead status showed conflicts with event history: {lead_id}")
+        event_type = _clean(event.get("event_type"))
+        if event_type in {"cancelled", "showed", "no_show"}:
+            terminal_events_by_appointment.setdefault(_clean(event.get("appointment_id")), set()).add(event_type)
+    for appointment_id, event_types in terminal_events_by_appointment.items():
+        if len(event_types) > 1:
+            raise ExportValidationError(
+                f"Conflicting terminal appointment events in daily partition: {appointment_id}"
+            )
 
 
 def write_daily_split_csvs(
@@ -623,6 +1061,7 @@ def write_daily_split_csvs(
     lead_rows: list[dict[str, Any]],
     event_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[Path, Path, Path]:
+    validate_appointment_event_rows(event_rows or [], report_date=report_date)
     output_dir.mkdir(parents=True, exist_ok=True)
     ad_path = output_dir / f"daily_ad_performance_{report_date.isoformat()}.csv"
     lead_path = output_dir / f"lead_cohort_{report_date.isoformat()}.csv"
@@ -636,6 +1075,31 @@ def write_daily_split_csvs(
 def write_backfill_qa_report(path: Path, qa_rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     write_csv(path, BACKFILL_QA_COLUMNS, qa_rows)
+
+
+def write_daily_split_qa_report(
+    *,
+    output_dir: Path,
+    qa: dict[str, Any],
+    ad_path: Path,
+    lead_path: Path,
+    event_path: Path,
+) -> Path:
+    """Write one current daily QA row, replacing any prior run of that day."""
+    qa_path = output_dir / "backfill_qa_report.csv"
+    temp_path = output_dir / ".backfill_qa_report.csv.tmp"
+    qa_row = dict(qa)
+    if not _clean(qa_row.get("date")):
+        raise ExportValidationError("Daily QA report date is required")
+    qa_row["ad_performance_file"] = str(ad_path)
+    qa_row["lead_cohort_file"] = str(lead_path)
+    qa_row["appointment_events_file"] = str(event_path)
+    write_backfill_qa_report(
+        temp_path,
+        [{column: qa_row.get(column, "") for column in BACKFILL_QA_COLUMNS}],
+    )
+    temp_path.replace(qa_path)
+    return qa_path
 
 
 def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:
@@ -828,8 +1292,6 @@ def _value_and_precision(value: Any) -> tuple[str, str]:
         parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return text, ""
-    if parsed.time().hour == 0 and parsed.time().minute == 0 and parsed.time().second == 0 and "T00:00:00" in normalized:
-        return parsed.date().isoformat(), "date"
     return _to_budapest(parsed).replace(microsecond=0).isoformat(), "datetime"
 
 
@@ -860,7 +1322,7 @@ def _missing_required_fields(ad_rows: list[dict[str, Any]], lead_rows: list[dict
     for prefix, rows, columns in (
         ("ad", ad_rows, ["metric_date", "platform", "account_id", "ad_id"]),
         ("lead", lead_rows, ["lead_id", "contact_id", "lead_created_at", "source_system", "attribution_status", "current_status"]),
-        ("event", event_rows, ["event_id", "lead_id", "contact_id", "event_type"]),
+        ("event", event_rows, ["event_id", "appointment_id", "contact_id", "event_type", "event_created_at"]),
     ):
         for index, row in enumerate(rows, start=2):
             fields = [column for column in columns if not _clean(row.get(column))]
@@ -871,20 +1333,14 @@ def _missing_required_fields(ad_rows: list[dict[str, Any]], lead_rows: list[dict
 
 def _status_timestamp_conflicts(lead_rows: list[dict[str, Any]], event_rows: list[dict[str, Any]]) -> list[str]:
     conflicts = []
-    event_types_by_lead: dict[str, set[str]] = {}
+    event_types_by_appointment: dict[str, set[str]] = {}
     for event in event_rows:
-        event_types_by_lead.setdefault(_clean(event.get("lead_id")), set()).add(_clean(event.get("event_type")))
-    for row in lead_rows:
-        lead_id = _clean(row.get("lead_id"))
-        status = _clean(row.get("current_status")).lower()
-        if _clean(row.get("first_appointment_at")) and "booking_created" not in event_types_by_lead.get(lead_id, set()):
-            conflicts.append(f"{lead_id}:appointment_without_event")
-        if "book" in status and not _clean(row.get("first_appointment_at")):
-            conflicts.append(f"{lead_id}:booked_without_appointment")
-        if "show" in status and "showed" not in event_types_by_lead.get(lead_id, set()) and not _clean(row.get("showed_at")):
-            conflicts.append(f"{lead_id}:showed_without_event")
-        if "cancel" in status and "cancelled" not in event_types_by_lead.get(lead_id, set()):
-            conflicts.append(f"{lead_id}:cancelled_without_event")
+        appointment_id = _clean(event.get("appointment_id"))
+        event_types_by_appointment.setdefault(appointment_id, set()).add(_clean(event.get("event_type")))
+    for appointment_id, event_types in event_types_by_appointment.items():
+        terminal_types = event_types & {"cancelled", "showed", "no_show"}
+        if len(terminal_types) > 1:
+            conflicts.append(f"{appointment_id}:conflicting_terminal_events")
     return conflicts
 
 
@@ -893,11 +1349,25 @@ def _missing_actual_timestamp_notes(lead_rows: list[dict[str, Any]]) -> str:
     return f"lead_created_at_date_precision:{count}" if count else ""
 
 
+def _appointment_source_gap_notes(audit: dict[str, Any]) -> str:
+    notes = []
+    for key in (
+        "missing_booking_created_timestamps",
+        "missing_status_event_timestamps",
+        "invalid_event_timestamps",
+    ):
+        value = int(audit.get(key) or 0)
+        if value:
+            notes.append(f"{key}:{value}")
+    return ";".join(notes)
+
+
 def _fake_midnight_count(rows: list[dict[str, Any]]) -> int:
     total = 0
     for row in rows:
         for key, value in row.items():
-            if key.endswith("_at") and isinstance(value, str) and "T00:00:00" in value:
+            precision = _clean(row.get(key.removesuffix("_at") + "_precision"))
+            if key.endswith("_at") and isinstance(value, str) and "T00:00:00" in value and precision != "datetime":
                 total += 1
     return total
 
@@ -926,10 +1396,10 @@ def _id_failures(ad_rows: list[dict[str, Any]], lead_rows: list[dict[str, Any]])
 def _appointment_contact_id(appointment: dict[str, Any]) -> str:
     for key in ("contactId", "contact_id", "appointmentContactId"):
         if _clean(appointment.get(key)):
-            return _clean(appointment.get(key))
+            return _crm_id(appointment.get(key), field="contact_id")
     contact = appointment.get("contact")
     if isinstance(contact, dict):
-        return _clean(contact.get("id") or contact.get("_id"))
+        return _crm_id(contact.get("id") or contact.get("_id"), field="contact_id")
     return ""
 
 
@@ -962,6 +1432,23 @@ def _id_string(value: Any) -> str:
     if "e+" in text.lower() or "." in text:
         raise ExportValidationError(f"Possible damaged numeric ID: {text}")
     return text
+
+
+def _crm_id(value: Any, *, field: str) -> str:
+    if value in (None, ""):
+        return ""
+    if not isinstance(value, str):
+        raise ExportValidationError(f"CRM identifier must be text in {field}")
+    text = value.strip()
+    _validate_crm_id_text(text, field=field)
+    return text
+
+
+def _validate_crm_id_text(value: str, *, field: str) -> None:
+    if not value:
+        return
+    if re.fullmatch(r"[+-]?\d+(?:\.\d+)?[eE][+-]?\d+", value) or re.fullmatch(r"[+-]?\d+\.\d+", value):
+        raise ExportValidationError(f"Possible damaged numeric CRM ID in {field}: {value}")
 
 
 def _clean(value: Any) -> str:

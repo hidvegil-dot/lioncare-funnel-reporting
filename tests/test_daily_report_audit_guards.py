@@ -7,11 +7,17 @@ from datetime import date, datetime
 from pathlib import Path
 
 from daily_split_exports import (
+    APPOINTMENT_EVENTS_COLUMNS,
+    BACKFILL_QA_COLUMNS,
     DAILY_AD_PERFORMANCE_COLUMNS,
     LEAD_COHORT_COLUMNS,
     ExportValidationError,
     build_split_exports_from_daily_lead_rows,
+    repair_legacy_appointment_event_rows,
+    read_csv_rows,
+    validate_appointment_event_rows,
     validate_lead_rows,
+    write_daily_split_qa_report,
 )
 from ghl_client import GHLClient
 from google_sheets_client import _column_letter
@@ -426,6 +432,233 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                 exported_at="2026-08-05T09:00:00+02:00",
                 account_id="act_120000000000000000",
             )
+
+    def test_appointment_export_partitions_by_event_creation_date_and_keeps_booking_status(self) -> None:
+        result = build_split_exports_from_daily_lead_rows(
+            report_date=date(2026, 8, 5),
+            daily_lead_rows=[
+                {
+                    "lead_id": "contact_1",
+                    "contact_id": "contact_1",
+                    "opportunity_id": "opportunity_1",
+                    "created_at": "2026-08-04T12:00:00+02:00",
+                    "lead_status": "cancelled",
+                }
+            ],
+            meta_data=None,
+            exported_at="2026-08-06T10:00:00+02:00",
+            appointments=[
+                {
+                    "id": "appointment_1",
+                    "contactId": "contact_1",
+                    "dateAdded": "2026-08-05T08:00:00Z",
+                    "startTime": "2026-08-14T08:00:00Z",
+                    "appointmentStatus": "cancelled",
+                },
+                {
+                    "id": "appointment_old",
+                    "contactId": "contact_1",
+                    "dateAdded": "2026-07-31T08:00:00Z",
+                    "startTime": "2026-08-01T08:00:00Z",
+                    "appointmentStatus": "showed",
+                },
+            ],
+        )
+
+        self.assertEqual(1, len(result["event_rows"]))
+        event = result["event_rows"][0]
+        self.assertEqual(APPOINTMENT_EVENTS_COLUMNS, list(event))
+        self.assertEqual("booking_created", event["event_type"])
+        self.assertEqual("", event["previous_status"])
+        self.assertEqual("booked", event["new_status"])
+        self.assertEqual("2026-08-05T10:00:00+02:00", event["event_created_at"])
+        self.assertEqual("opportunity_1", event["lead_id"])
+        self.assertEqual(1, result["qa"]["appointment_events_excluded_other_dates"])
+        self.assertIn("missing_status_event_timestamps:2", result["qa"]["missing_appointment_source_data"])
+
+    def test_appointment_export_uses_only_dedicated_status_change_timestamp(self) -> None:
+        result = build_split_exports_from_daily_lead_rows(
+            report_date=date(2026, 8, 5),
+            daily_lead_rows=[],
+            meta_data=None,
+            exported_at="2026-08-06T10:00:00+02:00",
+            appointments=[
+                {
+                    "id": "appointment_1",
+                    "contactId": "contact_1",
+                    "dateAdded": "2026-08-01T08:00:00Z",
+                    "startTime": "2026-08-05T07:00:00Z",
+                    "appointmentStatus": "showed",
+                    "updatedAt": "2026-08-05T08:00:00Z",
+                },
+                {
+                    "id": "appointment_2",
+                    "contactId": "contact_2",
+                    "dateAdded": "2026-08-01T08:00:00Z",
+                    "startTime": "2026-08-05T07:00:00Z",
+                    "appointmentStatus": "showed",
+                    "statusChangedAt": "2026-08-05T08:00:00Z",
+                },
+            ],
+        )
+
+        self.assertEqual(["showed"], [row["event_type"] for row in result["event_rows"]])
+        self.assertEqual("booked", result["event_rows"][0]["previous_status"])
+        self.assertEqual("showed", result["event_rows"][0]["new_status"])
+
+    def test_repair_legacy_appointment_export_removes_other_dates_and_unlinks_contact_fallback(self) -> None:
+        old_rows = []
+        for index in range(269):
+            old_rows.append(
+                {
+                    "event_id": f"old_{index}",
+                    "event_type": "booking_created",
+                    "event_created_at": "2026-07-01T10:00:00+02:00",
+                    "event_created_precision": "datetime",
+                    "appointment_id": f"appointment_old_{index}",
+                    "appointment_start_at": "2026-07-02T10:00:00+02:00",
+                    "appointment_start_precision": "datetime",
+                    "lead_id": f"contact_old_{index}",
+                    "contact_id": f"contact_old_{index}",
+                    "previous_status": "",
+                    "new_status": "showed",
+                    "data_as_of": "2026-08-06T08:00:00+02:00",
+                    "exported_at": "2026-08-06T08:00:00+02:00",
+                }
+            )
+        for index in range(2):
+            old_rows.append(
+                {
+                    "event_id": f"target_{index}",
+                    "event_type": "booking_created",
+                    "event_created_at": f"2026-08-05T1{index}:00:00+02:00",
+                    "event_created_precision": "datetime",
+                    "appointment_id": f"appointment_target_{index}",
+                    "appointment_start_at": f"2026-08-1{3 + index}T10:00:00+02:00",
+                    "appointment_start_precision": "datetime",
+                    "lead_id": f"contact_target_{index}",
+                    "contact_id": f"contact_target_{index}",
+                    "previous_status": "",
+                    "new_status": "confirmed",
+                    "data_as_of": "2026-08-06T08:00:00+02:00",
+                    "exported_at": "2026-08-06T08:00:00+02:00",
+                }
+            )
+
+        repaired, audit = repair_legacy_appointment_event_rows(
+            report_date=date(2026, 8, 5),
+            legacy_rows=old_rows,
+            historical_lead_rows=[
+                {"contact_id": "contact_target_1", "opportunity_id": "opportunity_target_1"}
+            ],
+            exported_at="2026-08-06T12:00:00+02:00",
+        )
+
+        self.assertEqual(2, len(repaired))
+        self.assertEqual(269, audit["removed_other_date_records"])
+        self.assertEqual(1, audit["unlinked_appointment_events"])
+        self.assertEqual({"", "opportunity_target_1"}, {row["lead_id"] for row in repaired})
+        self.assertEqual({"booked"}, {row["new_status"] for row in repaired})
+        repaired_again, _ = repair_legacy_appointment_event_rows(
+            report_date=date(2026, 8, 5),
+            legacy_rows=repaired,
+            historical_lead_rows=[
+                {"contact_id": "contact_target_1", "opportunity_id": "opportunity_target_1"}
+            ],
+            exported_at="2026-08-06T12:00:00+02:00",
+        )
+        self.assertEqual([row["event_id"] for row in repaired], [row["event_id"] for row in repaired_again])
+
+    def test_appointment_event_validator_rejects_all_guardrail_failures(self) -> None:
+        valid = {
+            "event_id": "appointment_1:booking_created:2026-08-05T10:00:00+02:00",
+            "event_type": "booking_created",
+            "event_created_at": "2026-08-05T10:00:00+02:00",
+            "event_created_precision": "datetime",
+            "appointment_id": "appointment_1",
+            "appointment_start_at": "2026-08-06T10:00:00+02:00",
+            "appointment_start_precision": "datetime",
+            "lead_id": "opportunity_1",
+            "contact_id": "contact_1",
+            "previous_status": "",
+            "new_status": "booked",
+            "data_as_of": "2026-08-06T10:00:00+02:00",
+            "exported_at": "2026-08-06T10:00:00+02:00",
+        }
+        validate_appointment_event_rows([valid], report_date=date(2026, 8, 5))
+
+        invalid_rows = []
+        wrong_day = dict(valid, event_created_at="2026-08-04T10:00:00+02:00")
+        invalid_rows.append([wrong_day])
+        invalid_rows.append([valid, dict(valid)])
+        invalid_rows.append([dict(valid, appointment_id=123)])
+        invalid_rows.append([dict(valid, lead_id="contact_1")])
+        invalid_rows.append([dict(valid, new_status="cancelled")])
+        invalid_rows.append(
+            [
+                dict(
+                    valid,
+                    event_created_at="2026-08-05T00:00:00+02:00",
+                    event_created_precision="date",
+                )
+            ]
+        )
+        invalid_rows.append(
+            [
+                dict(
+                    valid,
+                    event_type="no_show",
+                    previous_status="booked",
+                    new_status="no_show",
+                    appointment_start_at="2026-08-06T10:00:00+02:00",
+                )
+            ]
+        )
+        missing_column = dict(valid)
+        missing_column.pop("data_as_of")
+        invalid_rows.append([missing_column])
+        for rows in invalid_rows:
+            with self.assertRaises(ExportValidationError):
+                validate_appointment_event_rows(rows, report_date=date(2026, 8, 5))
+
+    def test_daily_qa_report_is_created_and_replaced_without_duplicate_rows(self) -> None:
+        output_dir = REPO_ROOT / ".tmp_daily_qa_report_test"
+        qa_path = output_dir / "backfill_qa_report.csv"
+        try:
+            paths = {
+                "ad_path": output_dir / "daily_ad_performance_2026-08-05.csv",
+                "lead_path": output_dir / "lead_cohort_2026-08-05.csv",
+                "event_path": output_dir / "appointment_events_2026-08-05.csv",
+            }
+            first_path = write_daily_split_qa_report(
+                output_dir=output_dir,
+                qa={"date": "2026-08-05", "appointment_events": 1},
+                **paths,
+            )
+            self.assertEqual(qa_path, first_path)
+            self.assertEqual(BACKFILL_QA_COLUMNS, qa_path.read_text(encoding="utf-8").splitlines()[0].split(","))
+
+            write_daily_split_qa_report(
+                output_dir=output_dir,
+                qa={"date": "2026-08-05", "appointment_events": 2},
+                **paths,
+            )
+            rows = read_csv_rows(qa_path)
+            self.assertEqual(1, len(rows))
+            self.assertEqual("2026-08-05", rows[0]["date"])
+            self.assertEqual("2", rows[0]["appointment_events"])
+            self.assertEqual(str(paths["event_path"]), rows[0]["appointment_events_file"])
+            with self.assertRaises(ExportValidationError):
+                write_daily_split_qa_report(
+                    output_dir=output_dir,
+                    qa={"appointment_events": 3},
+                    **paths,
+                )
+        finally:
+            if qa_path.exists():
+                qa_path.unlink()
+            if output_dir.exists():
+                output_dir.rmdir()
 
     def test_daily_split_export_rejects_fake_midnight_timestamp(self) -> None:
         with self.assertRaises(ExportValidationError):
