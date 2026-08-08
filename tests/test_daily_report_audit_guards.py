@@ -680,6 +680,13 @@ class DailyReportAuditGuardTest(unittest.TestCase):
                     "crm_attributed_leads": 5,
                     "crm_unattributed_leads": 2,
                 },
+                google_drive_links={
+                    "drive_daily_folder": "https://drive/folder",
+                    "daily_ad_performance_2026-08-05.csv": "https://drive/ad",
+                    "lead_cohort_2026-08-05.csv": "https://drive/lead",
+                    "appointment_events_2026-08-05.csv": "https://drive/events",
+                    "backfill_qa_report.csv": "https://drive/qa",
+                },
             )
 
             self.assertEqual(output_dir / "chatgpt_adatelemzes_2026-08-05.md", path)
@@ -689,6 +696,12 @@ class DailyReportAuditGuardTest(unittest.TestCase):
             self.assertIn("lead_cohort_2026-08-05.csv", content)
             self.assertIn("appointment_events_2026-08-05.csv", content)
             self.assertIn("backfill_qa_report.csv", content)
+            self.assertIn("## Google Drive elérés", content)
+            self.assertIn("https://drive/folder", content)
+            self.assertIn("https://drive/ad", content)
+            self.assertIn("https://drive/lead", content)
+            self.assertIn("https://drive/events", content)
+            self.assertIn("https://drive/qa", content)
             self.assertIn("Elemezd a 2026-08-05 napi LionCare funnel adatokat", content)
             self.assertIn("Ne keverd össze a hirdetési adatokat és a leadkohorsz adatokat.", content)
         finally:

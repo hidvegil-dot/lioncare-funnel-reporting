@@ -19,7 +19,11 @@ from daily_split_exports import (
     write_daily_split_csvs,
     write_daily_split_qa_report,
 )
-from report_storage import persist_daily_report_history
+from report_storage import (
+    ReportStorageConfig,
+    persist_daily_report_history,
+    upload_daily_files_to_google_drive,
+)
 from report_builder import (
     build_comparison_quick_snapshot,
     build_daily_decision_report,
@@ -303,6 +307,7 @@ def main() -> None:
         decision_report = None
         daily_lead_csv_rows = None
         daily_split_exports = None
+        daily_split_paths: tuple[Path, Path, Path, Path] | None = None
         if args.report_type == "daily":
             decision_report = build_daily_decision_report(
                 report_date=start_date,
@@ -580,15 +585,7 @@ def main() -> None:
                     lead_path=lead_path,
                     event_path=event_path,
                 )
-                write_chatgpt_analysis_handoff(
-                    output_dir=output_dir,
-                    report_date=start_date,
-                    ad_path=ad_path,
-                    lead_path=lead_path,
-                    event_path=event_path,
-                    qa_path=qa_path,
-                    qa=daily_split_exports["qa"],
-                )
+                daily_split_paths = (ad_path, lead_path, event_path, qa_path)
             write_html_report(
                 html_path=html_path,
                 rows=rows,
@@ -601,7 +598,7 @@ def main() -> None:
                 decision_report=decision_report,
             )
             storage_started_at = time.perf_counter()
-            persist_daily_report_history(
+            report_links = persist_daily_report_history(
                 report_date=start_date,
                 html_path=html_path,
                 csv_path=csv_path,
@@ -611,6 +608,39 @@ def main() -> None:
                 ga4_data=ga4_data,
                 meta_data=meta_data,
             )
+            if daily_split_exports and daily_split_paths:
+                ad_path, lead_path, event_path, qa_path = daily_split_paths
+                drive_config = ReportStorageConfig.from_env_optional()
+                drive_enabled = env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true")
+                if drive_enabled and drive_config is not None:
+                    split_links = upload_daily_files_to_google_drive(
+                        config=drive_config,
+                        report_date=start_date,
+                        files=[ad_path, lead_path, event_path, qa_path],
+                        latest_aliases={
+                            ad_path.name: "latest_daily_ad_performance.csv",
+                            lead_path.name: "latest_lead_cohort.csv",
+                            event_path.name: "latest_appointment_events.csv",
+                        },
+                    )
+                    report_links.update(split_links)
+                handoff_path = write_chatgpt_analysis_handoff(
+                    output_dir=output_dir,
+                    report_date=start_date,
+                    ad_path=ad_path,
+                    lead_path=lead_path,
+                    event_path=event_path,
+                    qa_path=qa_path,
+                    qa=daily_split_exports["qa"],
+                    google_drive_links=report_links,
+                )
+                if drive_enabled and drive_config is not None:
+                    handoff_links = upload_daily_files_to_google_drive(
+                        config=drive_config,
+                        report_date=start_date,
+                        files=[handoff_path],
+                    )
+                    report_links.update(handoff_links)
             logger.info(
                 "Completed daily historical storage step in %.2fs",
                 time.perf_counter() - storage_started_at,

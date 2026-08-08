@@ -1111,6 +1111,7 @@ def write_chatgpt_analysis_handoff(
     event_path: Path,
     qa_path: Path,
     qa: dict[str, Any],
+    google_drive_links: dict[str, str] | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     handoff_path = output_dir / f"chatgpt_adatelemzes_{report_date.isoformat()}.md"
@@ -1123,6 +1124,7 @@ def write_chatgpt_analysis_handoff(
             event_path=event_path,
             qa_path=qa_path,
             qa=qa,
+            google_drive_links=google_drive_links or {},
         ),
         encoding="utf-8",
     )
@@ -1138,6 +1140,7 @@ def _build_chatgpt_analysis_handoff_markdown(
     event_path: Path,
     qa_path: Path,
     qa: dict[str, Any],
+    google_drive_links: dict[str, str],
 ) -> str:
     fields = {
         "Hirdetési sorok": qa.get("ad_rows", ""),
@@ -1164,6 +1167,14 @@ def _build_chatgpt_analysis_handoff_markdown(
     if not qa_lines:
         qa_lines = ["- Nincs kiemelt QA megjegyzés."]
 
+    drive_lines = _build_google_drive_handoff_lines(
+        ad_path=ad_path,
+        lead_path=lead_path,
+        event_path=event_path,
+        qa_path=qa_path,
+        google_drive_links=google_drive_links,
+    )
+
     return "\n".join(
         [
             f"# LionCare napi adatelemzés - {report_date.isoformat()}",
@@ -1185,6 +1196,10 @@ def _build_chatgpt_analysis_handoff_markdown(
             f"- `{lead_path}`",
             f"- `{event_path}`",
             f"- `{qa_path}`",
+            "",
+            "## Google Drive elérés",
+            "",
+            *drive_lines,
             "",
             "## Rövid QA állapot",
             "",
@@ -1222,6 +1237,30 @@ def _build_chatgpt_analysis_handoff_markdown(
             "",
         ]
     )
+
+
+def _build_google_drive_handoff_lines(
+    *,
+    ad_path: Path,
+    lead_path: Path,
+    event_path: Path,
+    qa_path: Path,
+    google_drive_links: dict[str, str],
+) -> list[str]:
+    if not google_drive_links:
+        return ["- Google Drive link még nincs rögzítve ehhez a futáshoz."]
+
+    lines: list[str] = []
+    folder_link = google_drive_links.get("drive_daily_folder", "")
+    if folder_link:
+        lines.append(f"- Mappa: {folder_link}")
+
+    for path in [ad_path, lead_path, event_path, qa_path]:
+        link = google_drive_links.get(path.name, "")
+        if link:
+            lines.append(f"- `{path.name}`: {link}")
+
+    return lines or ["- Google Drive link még nincs rögzítve ehhez a futáshoz."]
 
 
 def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:

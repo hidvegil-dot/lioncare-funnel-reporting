@@ -92,7 +92,7 @@ def persist_daily_report_history(
     decision_report: dict[str, Any] | None,
     ga4_data: dict[str, Any] | None,
     meta_data: dict[str, Any] | None,
-) -> None:
+) -> dict[str, str]:
     config = ReportStorageConfig.from_env_optional()
     strict_storage = _env_flag("REPORT_STORAGE_STRICT")
     if config is None:
@@ -103,7 +103,7 @@ def persist_daily_report_history(
         if strict_storage:
             raise RuntimeError(message)
         logger.info(message)
-        return
+        return {}
 
     storage_failures: list[str] = []
     dated_html_path = _copy_dated_report(
@@ -117,82 +117,34 @@ def persist_daily_report_history(
         filename=f"daily_funnel_report_{report_date.isoformat()}.csv",
     )
 
-    drive_upload_enabled = os.getenv("REPORT_DRIVE_UPLOAD_ENABLED", "true").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-    }
+    drive_upload_enabled = _env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true")
     if not drive_upload_enabled:
         logger.info("Skipping Google Drive upload because REPORT_DRIVE_UPLOAD_ENABLED is disabled")
     report_links: dict[str, str] = {}
     try:
         if not drive_upload_enabled:
             raise _DriveUploadSkipped()
-        from google_drive_client import GoogleDriveClient
-
         logger.info(
             "Starting Google Drive daily report upload date=%s root_folder=%s auth_mode=%s",
             report_date,
             config.drive_root_folder_name,
             config.drive_upload_auth_mode,
         )
-        if config.drive_upload_auth_mode == "oauth":
-            if not config.drive_oauth_token_path:
-                raise ValueError(
-                    "GOOGLE_DRIVE_OAUTH_TOKEN_PATH is required when DRIVE_UPLOAD_AUTH_MODE=oauth. "
-                    "Run `python scripts/google_drive_oauth_init.py` first."
-                )
-            try:
-                drive = GoogleDriveClient.from_oauth_token(config.drive_oauth_token_path)
-            except Exception as oauth_exc:
-                logger.warning(
-                    "Google Drive OAuth auth failed; falling back to service account. "
-                    "If this also fails, share the Drive root folder with the service account. "
-                    "OAuth error: %s",
-                    oauth_exc,
-                )
-                drive = GoogleDriveClient(config.credentials_path)
-        elif config.drive_upload_auth_mode in {"service_account", "service-account"}:
-            drive = GoogleDriveClient(config.credentials_path)
-        else:
-            raise ValueError(
-                "Unsupported DRIVE_UPLOAD_AUTH_MODE: "
-                f"{config.drive_upload_auth_mode}. Use `oauth` or `service_account`."
-            )
-        root_folder_id = drive.resolve_root_folder_id(config.drive_root_folder_name)
-        daily_folder_id = drive.ensure_folder_path(
-            [
-                "riport",
-                "daily",
-                f"{report_date.year:04d}",
-                f"{report_date.month:02d}",
-                report_date.isoformat(),
+        upload_links = upload_daily_files_to_google_drive(
+            config=config,
+            report_date=report_date,
+            files=[
+                dated_html_path,
+                dated_csv_path,
             ],
-            root_folder_id=root_folder_id,
+            latest_aliases={
+                dated_html_path.name: "latest_daily_funnel_report.html",
+                dated_csv_path.name: "latest_daily_funnel_report.csv",
+            },
         )
-        drive.ensure_folder_path(["riport", "archive"], root_folder_id=root_folder_id)
-        dated_html_id = drive.upload_file(
-            dated_html_path,
-            folder_id=daily_folder_id,
-            filename=dated_html_path.name,
-        )
-        dated_csv_id = drive.upload_file(
-            dated_csv_path,
-            folder_id=daily_folder_id,
-            filename=dated_csv_path.name,
-        )
-        drive.upload_file(
-            dated_html_path,
-            folder_id=daily_folder_id,
-            filename="latest_daily_funnel_report.html",
-        )
-        drive.upload_file(
-            dated_csv_path,
-            folder_id=daily_folder_id,
-            filename="latest_daily_funnel_report.csv",
-        )
-        report_links["html"] = drive.get_file_link(dated_html_id)
-        report_links["csv"] = drive.get_file_link(dated_csv_id)
+        report_links.update(upload_links)
+        report_links["html"] = upload_links.get(dated_html_path.name, "")
+        report_links["csv"] = upload_links.get(dated_csv_path.name, "")
         logger.info("Completed Google Drive daily report upload date=%s", report_date)
     except _DriveUploadSkipped:
         pass
@@ -230,6 +182,66 @@ def persist_daily_report_history(
 
     if storage_failures:
         raise RuntimeError("; ".join(storage_failures))
+    return report_links
+
+
+def upload_daily_files_to_google_drive(
+    *,
+    config: ReportStorageConfig,
+    report_date: date,
+    files: list[Path],
+    latest_aliases: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Upload daily files to the standard Google Drive daily report folder.
+
+    Returns links keyed by local file name, plus `drive_daily_folder`.
+    """
+    if not files:
+        return {}
+
+    from google_drive_client import GoogleDriveClient
+
+    drive = _build_google_drive_client(config)
+    root_folder_id = drive.resolve_root_folder_id(config.drive_root_folder_name)
+    daily_folder_id = drive.ensure_folder_path(
+        [
+            "riport",
+            "daily",
+            f"{report_date.year:04d}",
+            f"{report_date.month:02d}",
+            report_date.isoformat(),
+        ],
+        root_folder_id=root_folder_id,
+    )
+    drive.ensure_folder_path(["riport", "archive"], root_folder_id=root_folder_id)
+
+    links: dict[str, str] = {"drive_daily_folder": drive.get_file_link(daily_folder_id)}
+    for file_path in files:
+        file_id = drive.upload_file(file_path, folder_id=daily_folder_id, filename=file_path.name)
+        links[file_path.name] = drive.get_file_link(file_id)
+        alias = (latest_aliases or {}).get(file_path.name)
+        if alias:
+            alias_id = drive.upload_file(file_path, folder_id=daily_folder_id, filename=alias)
+            links[alias] = drive.get_file_link(alias_id)
+    return links
+
+
+def _build_google_drive_client(config: ReportStorageConfig) -> Any:
+    from google_drive_client import GoogleDriveClient
+
+    if config.drive_upload_auth_mode == "oauth":
+        if not config.drive_oauth_token_path:
+            raise ValueError(
+                "GOOGLE_DRIVE_OAUTH_TOKEN_PATH is required when DRIVE_UPLOAD_AUTH_MODE=oauth. "
+                "Run `python scripts/google_drive_oauth_init.py` first."
+            )
+        return GoogleDriveClient.from_oauth_token(config.drive_oauth_token_path)
+    if config.drive_upload_auth_mode in {"service_account", "service-account"}:
+        return GoogleDriveClient(config.credentials_path)
+    raise ValueError(
+        "Unsupported DRIVE_UPLOAD_AUTH_MODE: "
+        f"{config.drive_upload_auth_mode}. Use `oauth` or `service_account`."
+    )
 
 
 def _copy_dated_report(*, source_path: Path, output_dir: Path, filename: str) -> Path:
