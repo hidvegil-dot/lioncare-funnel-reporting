@@ -15,6 +15,7 @@ from meta_ads_client import MetaAdsClient, MetaAdsConfig
 from daily_split_exports import (
     build_split_exports_from_daily_lead_rows,
     current_budapest_timestamp,
+    write_chatgpt_analysis_handoff,
     write_daily_split_csvs,
     write_daily_split_qa_report,
 )
@@ -572,12 +573,21 @@ def main() -> None:
                     lead_rows=daily_split_exports["lead_rows"],
                     event_rows=daily_split_exports["event_rows"],
                 )
-                write_daily_split_qa_report(
+                qa_path = write_daily_split_qa_report(
                     output_dir=output_dir,
                     qa=daily_split_exports["qa"],
                     ad_path=ad_path,
                     lead_path=lead_path,
                     event_path=event_path,
+                )
+                write_chatgpt_analysis_handoff(
+                    output_dir=output_dir,
+                    report_date=start_date,
+                    ad_path=ad_path,
+                    lead_path=lead_path,
+                    event_path=event_path,
+                    qa_path=qa_path,
+                    qa=daily_split_exports["qa"],
                 )
             write_html_report(
                 html_path=html_path,

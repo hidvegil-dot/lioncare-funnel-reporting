@@ -1102,6 +1102,128 @@ def write_daily_split_qa_report(
     return qa_path
 
 
+def write_chatgpt_analysis_handoff(
+    *,
+    output_dir: Path,
+    report_date: date,
+    ad_path: Path,
+    lead_path: Path,
+    event_path: Path,
+    qa_path: Path,
+    qa: dict[str, Any],
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    handoff_path = output_dir / f"chatgpt_adatelemzes_{report_date.isoformat()}.md"
+    temp_path = output_dir / f".{handoff_path.name}.tmp"
+    temp_path.write_text(
+        _build_chatgpt_analysis_handoff_markdown(
+            report_date=report_date,
+            ad_path=ad_path,
+            lead_path=lead_path,
+            event_path=event_path,
+            qa_path=qa_path,
+            qa=qa,
+        ),
+        encoding="utf-8",
+    )
+    temp_path.replace(handoff_path)
+    return handoff_path
+
+
+def _build_chatgpt_analysis_handoff_markdown(
+    *,
+    report_date: date,
+    ad_path: Path,
+    lead_path: Path,
+    event_path: Path,
+    qa_path: Path,
+    qa: dict[str, Any],
+) -> str:
+    fields = {
+        "Hirdetési sorok": qa.get("ad_rows", ""),
+        "Egyedi hirdetések": qa.get("unique_ads", ""),
+        "Leadek": qa.get("unique_leads", ""),
+        "Appointment eventek": qa.get("appointment_events", ""),
+        "Meta költés": f"{qa.get('meta_spend_huf', '')} Ft" if qa.get("meta_spend_huf") not in ("", None) else "",
+        "Landing page view": qa.get("landing_page_views", ""),
+        "Meta regisztráció": qa.get("meta_registration_leads", ""),
+        "CRM attributed lead": qa.get("crm_attributed_leads", ""),
+        "CRM partial/uncertain lead": qa.get("crm_partial_or_uncertain_leads", ""),
+        "CRM unattributed lead": qa.get("crm_unattributed_leads", ""),
+        "Foglalások": qa.get("bookings", ""),
+        "Megjelenések": qa.get("shows", ""),
+        "No-show": qa.get("no_shows", ""),
+        "Lemondások": qa.get("cancellations", ""),
+        "Szerződések": qa.get("contracts", ""),
+        "Hiányzó reach": qa.get("missing_reach", ""),
+        "Státusz/időpont konfliktus": qa.get("status_timestamp_conflicts", ""),
+        "Hiányzó kötelező mezők": qa.get("missing_required_fields", ""),
+        "Adatkorlát": qa.get("missing_appointment_source_data", "") or qa.get("notes", ""),
+    }
+    qa_lines = [f"- {label}: {value}" for label, value in fields.items() if _clean(value) != ""]
+    if not qa_lines:
+        qa_lines = ["- Nincs kiemelt QA megjegyzés."]
+
+    return "\n".join(
+        [
+            f"# LionCare napi adatelemzés - {report_date.isoformat()}",
+            "",
+            "## Vizsgált nap",
+            "",
+            report_date.isoformat(),
+            "",
+            "## Elemzendő fájlok",
+            "",
+            f"1. `{ad_path.name}` - hirdetési teljesítmény, egy sor = date + platform + account_id + ad_id.",
+            f"2. `{lead_path.name}` - leadkohorsz, egy sor = egy lead.",
+            f"3. `{event_path.name}` - foglalási és meeting státuszesemények.",
+            f"4. `{qa_path.name}` - napi QA ellenőrzés.",
+            "",
+            "## Fájlok helye",
+            "",
+            f"- `{ad_path}`",
+            f"- `{lead_path}`",
+            f"- `{event_path}`",
+            f"- `{qa_path}`",
+            "",
+            "## Rövid QA állapot",
+            "",
+            *qa_lines,
+            "",
+            "## Elemzési prompt",
+            "",
+            f"Elemezd a {report_date.isoformat()} napi LionCare funnel adatokat a csatolt 4 fájl alapján.",
+            "",
+            "Külön vizsgáld:",
+            "",
+            "1. mennyit költöttünk;",
+            "2. hány Meta regisztráció jött;",
+            "3. hány GHL lead jött;",
+            "4. melyik kampányból, hirdetéssorozatból és hirdetésből jöttek;",
+            "5. lett-e foglalás a leadekből;",
+            "6. lett-e megjelenés, no-show vagy lemondás;",
+            "7. van-e Meta-GHL eltérés;",
+            "8. van-e adatminőségi probléma a QA alapján.",
+            "",
+            "Ne keverd össze a hirdetési adatokat és a leadkohorsz adatokat.",
+            "A hirdetési teljesítményt a `daily_ad_performance` fájlból nézd.",
+            "A leadek státuszát a `lead_cohort` fájlból nézd.",
+            "A meetingeseményeket az `appointment_events` fájlból nézd.",
+            "Az adatminőségi kockázatot a `backfill_qa_report` alapján értékeld.",
+            "",
+            "A végén adj:",
+            "",
+            "- rövid vezetői összefoglalót;",
+            "- fő számokat;",
+            "- kampány / ad set / hirdetés bontást;",
+            "- lead -> booking -> show állapotot;",
+            "- adatminőségi megjegyzést;",
+            "- konkrét javaslatot, hogy mit figyeljek vagy módosítsak.",
+            "",
+        ]
+    )
+
+
 def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)

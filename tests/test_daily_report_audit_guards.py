@@ -17,6 +17,7 @@ from daily_split_exports import (
     read_csv_rows,
     validate_appointment_event_rows,
     validate_lead_rows,
+    write_chatgpt_analysis_handoff,
     write_daily_split_qa_report,
 )
 from ghl_client import GHLClient
@@ -657,6 +658,43 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         finally:
             if qa_path.exists():
                 qa_path.unlink()
+            if output_dir.exists():
+                output_dir.rmdir()
+
+    def test_chatgpt_analysis_handoff_contains_daily_files_and_prompt(self) -> None:
+        output_dir = REPO_ROOT / ".tmp_chatgpt_handoff_test"
+        report_date = date(2026, 8, 5)
+        try:
+            path = write_chatgpt_analysis_handoff(
+                output_dir=output_dir,
+                report_date=report_date,
+                ad_path=output_dir / "daily_ad_performance_2026-08-05.csv",
+                lead_path=output_dir / "lead_cohort_2026-08-05.csv",
+                event_path=output_dir / "appointment_events_2026-08-05.csv",
+                qa_path=output_dir / "backfill_qa_report.csv",
+                qa={
+                    "ad_rows": 2,
+                    "unique_leads": 7,
+                    "appointment_events": 1,
+                    "meta_spend_huf": 8803,
+                    "crm_attributed_leads": 5,
+                    "crm_unattributed_leads": 2,
+                },
+            )
+
+            self.assertEqual(output_dir / "chatgpt_adatelemzes_2026-08-05.md", path)
+            content = path.read_text(encoding="utf-8")
+            self.assertIn("LionCare napi adatelemzés - 2026-08-05", content)
+            self.assertIn("daily_ad_performance_2026-08-05.csv", content)
+            self.assertIn("lead_cohort_2026-08-05.csv", content)
+            self.assertIn("appointment_events_2026-08-05.csv", content)
+            self.assertIn("backfill_qa_report.csv", content)
+            self.assertIn("Elemezd a 2026-08-05 napi LionCare funnel adatokat", content)
+            self.assertIn("Ne keverd össze a hirdetési adatokat és a leadkohorsz adatokat.", content)
+        finally:
+            handoff_path = output_dir / "chatgpt_adatelemzes_2026-08-05.md"
+            if handoff_path.exists():
+                handoff_path.unlink()
             if output_dir.exists():
                 output_dir.rmdir()
 

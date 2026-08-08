@@ -142,6 +142,7 @@ jobs:
           test -s "lead_cohort_${report_date}.csv"
           test -s "appointment_events_${report_date}.csv"
           test -s backfill_qa_report.csv
+          test -s "chatgpt_adatelemzes_${report_date}.md"
           test -s report_run.log
       - name: Upload reports to OneDrive
         if: steps.budapest_time.outputs.run_report == 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
@@ -161,6 +162,7 @@ jobs:
           rclone copyto "lead_cohort_${report_date}.csv" "onedrive:${daily_path}/lead_cohort_${report_date}.csv"
           rclone copyto "appointment_events_${report_date}.csv" "onedrive:${daily_path}/appointment_events_${report_date}.csv"
           rclone copyto "backfill_qa_report.csv" "onedrive:${daily_path}/backfill_qa_report.csv"
+          rclone copyto "chatgpt_adatelemzes_${report_date}.md" "onedrive:${daily_path}/chatgpt_adatelemzes_${report_date}.md"
           rclone copyto "archive/daily_funnel_report_${report_date}.html" "onedrive:${daily_path}/latest_daily_funnel_report.html"
           rclone copyto "archive/daily_funnel_report_${report_date}.csv" "onedrive:${daily_path}/latest_daily_funnel_report.csv"
           rclone copyto "daily_ad_performance_${report_date}.csv" "onedrive:${daily_path}/latest_daily_ad_performance.csv"
@@ -179,4 +181,5 @@ jobs:
             lead_cohort_*.csv
             appointment_events_*.csv
             backfill_qa_report.csv
+            chatgpt_adatelemzes_*.md
             report_run.log
