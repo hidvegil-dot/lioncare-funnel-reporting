@@ -45,7 +45,7 @@ jobs:
       RCLONE_CONFIG_ONEDRIVE: ${{ secrets.RCLONE_CONFIG_ONEDRIVE }}
       ONEDRIVE_UPLOAD_ROOT_PATH: ${{ secrets.ONEDRIVE_UPLOAD_ROOT_PATH }}
       REPORT_HISTORY_ENABLED: "true"
-      REPORT_DRIVE_UPLOAD_ENABLED: "false"
+      REPORT_DRIVE_UPLOAD_ENABLED: "true"
       REPORT_STORAGE_STRICT: "true"
       REPORT_DATA_STRICT: "true"
     steps:
@@ -121,6 +121,14 @@ jobs:
           test -s weekly_ghl_funnel_report.html
           test -s weekly_ghl_funnel_report.csv
           test -s weekly_ghl_ceo_summary.md
+          if [ -z "${WEEK_START:-}" ]; then
+            WEEK_START_RESOLVED="$(python -c 'from datetime import datetime, timedelta; from zoneinfo import ZoneInfo; today=datetime.now(ZoneInfo("Europe/Budapest")).date(); start=today-timedelta(days=today.weekday()+7); print(start.isoformat())')"
+            WEEK_END_RESOLVED="$(python -c 'from datetime import date, timedelta; start=date.fromisoformat("'"$WEEK_START_RESOLVED"'"); print((start+timedelta(days=6)).isoformat())')"
+          else
+            WEEK_START_RESOLVED="$WEEK_START"
+            WEEK_END_RESOLVED="${WEEK_END:-$(python -c 'from datetime import date, timedelta; start=date.fromisoformat("'"$WEEK_START"'"); print((start+timedelta(days=6)).isoformat())')}"
+          fi
+          test -s "chatgpt_heti_adatelemzes_${WEEK_START_RESOLVED}_${WEEK_END_RESOLVED}.md"
           test -s weekly_report_run.log
       - name: Upload weekly GHL reports to OneDrive
         if: steps.budapest_time.outputs.run_report == 'true' && env.RCLONE_CONFIG_ONEDRIVE != ''
@@ -129,10 +137,25 @@ jobs:
           mkdir -p ~/.config/rclone
           printf '%s' "$RCLONE_CONFIG_ONEDRIVE" > ~/.config/rclone/rclone.conf
           root_path="${ONEDRIVE_UPLOAD_ROOT_PATH:-ROAR/LionCare/riport}"
-          rclone mkdir "onedrive:${root_path}/weekly"
-          rclone copy weekly_ghl_funnel_report.html "onedrive:${root_path}/weekly"
-          rclone copy weekly_ghl_funnel_report.csv "onedrive:${root_path}/weekly"
-          rclone copy weekly_ghl_ceo_summary.md "onedrive:${root_path}/weekly"
+          if [ -z "${WEEK_START:-}" ]; then
+            WEEK_START_RESOLVED="$(python -c 'from datetime import datetime, timedelta; from zoneinfo import ZoneInfo; today=datetime.now(ZoneInfo("Europe/Budapest")).date(); start=today-timedelta(days=today.weekday()+7); print(start.isoformat())')"
+            WEEK_END_RESOLVED="$(python -c 'from datetime import date, timedelta; start=date.fromisoformat("'"$WEEK_START_RESOLVED"'"); print((start+timedelta(days=6)).isoformat())')"
+          else
+            WEEK_START_RESOLVED="$WEEK_START"
+            WEEK_END_RESOLVED="${WEEK_END:-$(python -c 'from datetime import date, timedelta; start=date.fromisoformat("'"$WEEK_START"'"); print((start+timedelta(days=6)).isoformat())')}"
+          fi
+          year="${WEEK_START_RESOLVED:0:4}"
+          weekly_path="${root_path}/weekly/${year}/${WEEK_START_RESOLVED}_${WEEK_END_RESOLVED}"
+          handoff="chatgpt_heti_adatelemzes_${WEEK_START_RESOLVED}_${WEEK_END_RESOLVED}.md"
+          rclone mkdir "onedrive:${weekly_path}"
+          rclone copyto weekly_ghl_funnel_report.html "onedrive:${weekly_path}/weekly_ghl_funnel_report.html"
+          rclone copyto weekly_ghl_funnel_report.csv "onedrive:${weekly_path}/weekly_ghl_funnel_report.csv"
+          rclone copyto weekly_ghl_ceo_summary.md "onedrive:${weekly_path}/weekly_ghl_ceo_summary.md"
+          rclone copyto "$handoff" "onedrive:${weekly_path}/${handoff}"
+          rclone copyto weekly_ghl_funnel_report.html "onedrive:${weekly_path}/latest_weekly_ghl_funnel_report.html"
+          rclone copyto weekly_ghl_funnel_report.csv "onedrive:${weekly_path}/latest_weekly_ghl_funnel_report.csv"
+          rclone copyto weekly_ghl_ceo_summary.md "onedrive:${weekly_path}/latest_weekly_ghl_ceo_summary.md"
+          rclone copyto "$handoff" "onedrive:${weekly_path}/latest_chatgpt_heti_adatelemzes.md"
       - name: Upload weekly GHL report artifacts
         if: steps.budapest_time.outputs.run_report == 'true' && always()
         uses: actions/upload-artifact@v4
@@ -143,4 +166,5 @@ jobs:
             weekly_ghl_funnel_report.html
             weekly_ghl_funnel_report.csv
             weekly_ghl_ceo_summary.md
+            chatgpt_heti_adatelemzes_*.md
             weekly_report_run.log

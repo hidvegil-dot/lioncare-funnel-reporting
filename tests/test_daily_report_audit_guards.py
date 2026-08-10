@@ -35,6 +35,8 @@ from report_builder import (
 from scripts.check_daily_report_index import _daily_report_exists, _fetch_daily_report_index_values
 from scripts import monitor_github_actions
 from scripts.update_opportunity_status_by_pipeline import select_pipeline
+from weekly_ghl_report import resolve_week_window
+from weekly_report_generator import write_weekly_chatgpt_analysis_handoff
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +53,67 @@ class DailyReportAuditGuardTest(unittest.TestCase):
         )
 
         self.assertEqual("pipeline_2", pipeline["id"])
+
+    def test_weekly_window_requires_monday_to_sunday(self) -> None:
+        window = resolve_week_window("2026-08-03", None)
+        self.assertEqual(date(2026, 8, 3), window.start)
+        self.assertEqual(date(2026, 8, 9), window.end)
+
+        with self.assertRaises(ValueError):
+            resolve_week_window("2026-08-04", None)
+        with self.assertRaises(ValueError):
+            resolve_week_window("2026-08-03", "2026-08-08")
+
+    def test_weekly_chatgpt_handoff_contains_drive_links_and_monday_sunday_scope(self) -> None:
+        output_dir = REPO_ROOT / ".tmp_weekly_chatgpt_handoff_test"
+        output_dir.mkdir(exist_ok=True)
+        handoff_path = output_dir / "chatgpt_heti_adatelemzes_2026-08-03_2026-08-09.md"
+        try:
+            report = {
+                "week_start": "2026-08-03",
+                "week_end": "2026-08-09",
+                "metrics": {
+                    "new_leads": 10,
+                    "bookings": 4,
+                    "showed": 3,
+                    "no_show": 1,
+                    "cancelled": 0,
+                    "won": 1,
+                    "lost": 0,
+                    "lead_to_booking_rate": 40,
+                    "booking_to_show_rate": 75,
+                    "show_to_close_rate": 33.33,
+                },
+                "diagnosis": {
+                    "main_bottleneck": "booking",
+                    "crm_data_quality_note": "Nincs kritikus adatminőségi jelzés.",
+                },
+            }
+            write_weekly_chatgpt_analysis_handoff(
+                markdown_path=handoff_path,
+                report=report,
+                html_path=output_dir / "weekly_ghl_funnel_report.html",
+                csv_path=output_dir / "weekly_ghl_funnel_report.csv",
+                summary_path=output_dir / "weekly_ghl_ceo_summary.md",
+                google_drive_links={
+                    "drive_weekly_folder": "https://drive/weekly",
+                    "weekly_ghl_funnel_report.csv": "https://drive/csv",
+                    "weekly_ghl_ceo_summary.md": "https://drive/summary",
+                    "weekly_ghl_funnel_report.html": "https://drive/html",
+                },
+            )
+            content = handoff_path.read_text(encoding="utf-8")
+            self.assertIn("LionCare heti adatelemzés - 2026-08-03 - 2026-08-09", content)
+            self.assertIn("Kezdés: 2026-08-03 00:00 Europe/Budapest", content)
+            self.assertIn("Zárás: 2026-08-09 23:59:59 Europe/Budapest", content)
+            self.assertIn("https://drive/weekly", content)
+            self.assertIn("https://drive/csv", content)
+            self.assertIn("Elemezd a 2026-08-03 - 2026-08-09 heti LionCare funnel adatokat", content)
+        finally:
+            if handoff_path.exists():
+                handoff_path.unlink()
+            if output_dir.exists():
+                output_dir.rmdir()
 
     def test_ghl_window_uses_created_date_when_lead_date_is_missing(self) -> None:
         client = GHLClient.__new__(GHLClient)

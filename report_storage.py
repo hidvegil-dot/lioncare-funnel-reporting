@@ -226,6 +226,42 @@ def upload_daily_files_to_google_drive(
     return links
 
 
+def upload_weekly_files_to_google_drive(
+    *,
+    config: ReportStorageConfig,
+    week_start: date,
+    week_end: date,
+    files: list[Path],
+    latest_aliases: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Upload weekly files to the standard Google Drive weekly report folder."""
+    if not files:
+        return {}
+
+    drive = _build_google_drive_client(config)
+    root_folder_id = drive.resolve_root_folder_id(config.drive_root_folder_name)
+    weekly_folder_id = drive.ensure_folder_path(
+        [
+            "riport",
+            "weekly",
+            f"{week_start.year:04d}",
+            f"{week_start.isoformat()}_{week_end.isoformat()}",
+        ],
+        root_folder_id=root_folder_id,
+    )
+    drive.ensure_folder_path(["riport", "archive"], root_folder_id=root_folder_id)
+
+    links: dict[str, str] = {"drive_weekly_folder": drive.get_file_link(weekly_folder_id)}
+    for file_path in files:
+        file_id = drive.upload_file(file_path, folder_id=weekly_folder_id, filename=file_path.name)
+        links[file_path.name] = drive.get_file_link(file_id)
+        alias = (latest_aliases or {}).get(file_path.name)
+        if alias:
+            alias_id = drive.upload_file(file_path, folder_id=weekly_folder_id, filename=alias)
+            links[alias] = drive.get_file_link(alias_id)
+    return links
+
+
 def _build_google_drive_client(config: ReportStorageConfig) -> Any:
     from google_drive_client import GoogleDriveClient
 
@@ -262,7 +298,7 @@ def persist_weekly_ai_analysis(
     csv_path: Path,
     output_dir: Path,
     report: dict[str, Any],
-) -> None:
+) -> dict[str, str]:
     config = ReportStorageConfig.from_env_optional()
     strict_storage = _env_flag("REPORT_STORAGE_STRICT")
     if config is None:
@@ -270,9 +306,10 @@ def persist_weekly_ai_analysis(
         if strict_storage:
             raise RuntimeError(message)
         logger.info(message)
-        return
+        return {}
 
     failures: list[str] = []
+    report_links: dict[str, str] = {}
     dated_html = _copy_dated_report(
         source_path=html_path,
         output_dir=output_dir,
@@ -291,33 +328,24 @@ def persist_weekly_ai_analysis(
 
     if _env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true"):
         try:
-            from google_drive_client import GoogleDriveClient
-
-            if config.drive_upload_auth_mode == "oauth":
-                if not config.drive_oauth_token_path:
-                    raise ValueError("GOOGLE_DRIVE_OAUTH_TOKEN_PATH is required when DRIVE_UPLOAD_AUTH_MODE=oauth")
-                try:
-                    drive = GoogleDriveClient.from_oauth_token(config.drive_oauth_token_path)
-                except Exception as oauth_exc:
-                    logger.warning(
-                        "Google Drive OAuth auth failed for weekly upload; falling back to service account. "
-                        "If this also fails, share the Drive root folder with the service account. "
-                        "OAuth error: %s",
-                        oauth_exc,
-                    )
-                    drive = GoogleDriveClient(config.credentials_path)
-            else:
-                drive = GoogleDriveClient(config.credentials_path)
-            root_folder_id = drive.resolve_root_folder_id(config.drive_root_folder_name)
-            weekly_folder_id = drive.ensure_folder_path(["riport", "weekly"], root_folder_id=root_folder_id)
-            drive.upload_file(dated_html, folder_id=weekly_folder_id, filename=dated_html.name)
-            drive.upload_file(dated_summary, folder_id=weekly_folder_id, filename=dated_summary.name)
-            drive.upload_file(dated_csv, folder_id=weekly_folder_id, filename=dated_csv.name)
+            report_links.update(upload_weekly_files_to_google_drive(
+                config=config,
+                week_start=week_start,
+                week_end=week_end,
+                files=[dated_html, dated_summary, dated_csv],
+                latest_aliases={
+                    dated_html.name: "latest_weekly_ghl_funnel_report.html",
+                    dated_summary.name: "latest_weekly_ghl_ceo_summary.md",
+                    dated_csv.name: "latest_weekly_ghl_funnel_report.csv",
+                },
+            ))
             logger.info("Completed Google Drive weekly report upload week_start=%s", week_start)
         except Exception as exc:
             logger.exception("Google Drive weekly upload failed")
             if strict_storage:
                 failures.append(f"Google Drive weekly upload failed: {exc}")
+    else:
+        report_links = {}
 
     try:
         from google_sheets_client import GoogleSheetsClient
@@ -368,6 +396,7 @@ def persist_weekly_ai_analysis(
 
     if failures:
         raise RuntimeError("; ".join(failures))
+    return report_links
 
 
 class _DriveUploadSkipped(Exception):

@@ -9,14 +9,23 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
 from ghl_client import GHLClient, GHLConfig
 from report_builder import safe_pct
-from report_storage import persist_weekly_ai_analysis
+from report_storage import (
+    ReportStorageConfig,
+    persist_weekly_ai_analysis,
+    upload_weekly_files_to_google_drive,
+)
 from weekly_ai_summary import build_weekly_ai_summary
-from weekly_report_generator import write_weekly_ghl_html, write_weekly_ghl_markdown
+from weekly_report_generator import (
+    write_weekly_chatgpt_analysis_handoff,
+    write_weekly_ghl_html,
+    write_weekly_ghl_markdown,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +49,7 @@ CANCELLED_STATUSES = {"cancelled", "canceled", "cancel", "deleted"}
 RESCHEDULED_STATUSES = {"rescheduled", "reschedule"}
 WON_STATUSES = {"won", "closed", "closed-won", "closed_won"}
 LOST_STATUSES = {"lost", "closed-lost", "closed_lost"}
+BUDAPEST_TZ = ZoneInfo("Europe/Budapest")
 
 
 @dataclass(frozen=True)
@@ -76,10 +86,11 @@ def main() -> None:
     csv_path = output_dir / "weekly_ghl_funnel_report.csv"
     html_path = output_dir / "weekly_ghl_funnel_report.html"
     summary_path = output_dir / "weekly_ghl_ceo_summary.md"
+    handoff_path = output_dir / f"chatgpt_heti_adatelemzes_{window.start.isoformat()}_{window.end.isoformat()}.md"
     write_weekly_csv(csv_path, report)
     write_weekly_ghl_html(html_path=html_path, report=report)
     write_weekly_ghl_markdown(markdown_path=summary_path, report=report)
-    persist_weekly_ai_analysis(
+    report_links = persist_weekly_ai_analysis(
         week_start=window.start,
         week_end=window.end,
         html_path=html_path,
@@ -88,6 +99,35 @@ def main() -> None:
         output_dir=output_dir,
         report=report,
     )
+    drive_config = ReportStorageConfig.from_env_optional()
+    if _env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true") and drive_config is not None:
+        report_links.update(upload_weekly_files_to_google_drive(
+            config=drive_config,
+            week_start=window.start,
+            week_end=window.end,
+            files=[html_path, summary_path, csv_path],
+            latest_aliases={
+                html_path.name: "latest_weekly_ghl_funnel_report.html",
+                summary_path.name: "latest_weekly_ghl_ceo_summary.md",
+                csv_path.name: "latest_weekly_ghl_funnel_report.csv",
+            },
+        ))
+    write_weekly_chatgpt_analysis_handoff(
+        markdown_path=handoff_path,
+        report=report,
+        html_path=html_path,
+        csv_path=csv_path,
+        summary_path=summary_path,
+        google_drive_links=report_links,
+    )
+    if _env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true") and drive_config is not None:
+        upload_weekly_files_to_google_drive(
+            config=drive_config,
+            week_start=window.start,
+            week_end=window.end,
+            files=[handoff_path],
+            latest_aliases={handoff_path.name: "latest_chatgpt_heti_adatelemzes.md"},
+        )
     logger.info("Completed weekly GHL report week_start=%s week_end=%s", window.start, window.end)
 
 
@@ -95,13 +135,21 @@ def resolve_week_window(week_start_raw: str | None, week_end_raw: str | None) ->
     if week_start_raw:
         start = datetime.strptime(week_start_raw, "%Y-%m-%d").date()
     else:
-        today = date.today()
+        today = datetime.now(BUDAPEST_TZ).date()
         current_monday = today - timedelta(days=today.weekday())
         start = current_monday - timedelta(days=7)
     end = datetime.strptime(week_end_raw, "%Y-%m-%d").date() if week_end_raw else start + timedelta(days=6)
     if end < start:
         raise ValueError("week-end must be later than or equal to week-start")
+    if start.weekday() != 0:
+        raise ValueError("week-start must be a Monday for the weekly Monday-Sunday analysis")
+    if end != start + timedelta(days=6):
+        raise ValueError("week-end must be the Sunday after week-start")
     return WeekWindow(start=start, end=end)
+
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def build_weekly_ghl_report(*, client: GHLClient, week: WeekWindow) -> dict[str, Any]:

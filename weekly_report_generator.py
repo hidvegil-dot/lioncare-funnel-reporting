@@ -42,6 +42,106 @@ def write_weekly_ghl_markdown(*, markdown_path: Path, report: dict[str, Any]) ->
     markdown_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_weekly_chatgpt_analysis_handoff(
+    *,
+    markdown_path: Path,
+    report: dict[str, Any],
+    html_path: Path,
+    csv_path: Path,
+    summary_path: Path,
+    google_drive_links: dict[str, str] | None = None,
+) -> None:
+    metrics = report["metrics"]
+    diagnosis = report["diagnosis"]
+    drive_lines = _weekly_drive_lines(
+        html_path=html_path,
+        csv_path=csv_path,
+        summary_path=summary_path,
+        google_drive_links=google_drive_links or {},
+    )
+    lines = [
+        f"# LionCare heti adatelemzés - {report['week_start']} - {report['week_end']}",
+        "",
+        "## Vizsgált hét",
+        "",
+        f"- Kezdés: {report['week_start']} 00:00 Europe/Budapest",
+        f"- Zárás: {report['week_end']} 23:59:59 Europe/Budapest",
+        "- Logika: lezárt hét, hétfőtől vasárnap éjfélig.",
+        "",
+        "## Elemzendő fájlok",
+        "",
+        f"1. `{csv_path.name}` - heti GHL KPI sor.",
+        f"2. `{summary_path.name}` - vezetői heti összefoglaló.",
+        f"3. `{html_path.name}` - vizuális heti riport.",
+        "",
+        "## Fájlok helye",
+        "",
+        f"- `{csv_path}`",
+        f"- `{summary_path}`",
+        f"- `{html_path}`",
+        "",
+        "## Google Drive elérés",
+        "",
+        *drive_lines,
+        "",
+        "## Rövid heti QA / KPI állapot",
+        "",
+        f"- Új lead: {metrics['new_leads']}",
+        f"- Foglalás: {metrics['bookings']}",
+        f"- Megjelent: {metrics['showed']}",
+        f"- No-show: {metrics['no_show']}",
+        f"- Törölt / lemondott: {metrics['cancelled']}",
+        f"- Won: {metrics['won']}",
+        f"- Lost: {metrics['lost']}",
+        f"- Lead -> foglalás: {metrics['lead_to_booking_rate']}%",
+        f"- Foglalás -> megjelent: {metrics['booking_to_show_rate']}%",
+        f"- Megjelent -> szerződés: {metrics['show_to_close_rate']}%",
+        f"- Fő szűk keresztmetszet: {diagnosis['main_bottleneck']}",
+        f"- Adatminőség: {diagnosis['crm_data_quality_note']}",
+        "",
+        "## Elemzési prompt",
+        "",
+        f"Elemezd a {report['week_start']} - {report['week_end']} heti LionCare funnel adatokat a csatolt heti fájlok alapján.",
+        "",
+        "Külön vizsgáld:",
+        "",
+        "1. mennyi új lead érkezett;",
+        "2. hány foglalás lett;",
+        "3. hány meeting lett megtartva;",
+        "4. hány no-show, lemondás és szerződés volt;",
+        "5. melyik tanácsadónál van eltérés vagy szűk keresztmetszet;",
+        "6. hogyan változott a hét az előző héthez képest;",
+        "7. van-e delegálási vagy státuszolási adatminőségi probléma;",
+        "8. mi legyen a következő hét 3 konkrét fókusza.",
+        "",
+        "Ne napi eseményszámokból számolj hamis kohorszkonverziót.",
+        "A heti CSV-ben szereplő KPI sort és a vezetői summaryt együtt értelmezd.",
+        "A végén adj rövid vezetői összefoglalót, fő számokat, tanácsadói bontást és konkrét döntési javaslatot.",
+        "",
+    ]
+    markdown_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _weekly_drive_lines(
+    *,
+    html_path: Path,
+    csv_path: Path,
+    summary_path: Path,
+    google_drive_links: dict[str, str],
+) -> list[str]:
+    if not google_drive_links:
+        return ["- Google Drive link még nincs rögzítve ehhez a futáshoz."]
+    lines: list[str] = []
+    folder_link = google_drive_links.get("drive_weekly_folder", "")
+    if folder_link:
+        lines.append(f"- Mappa: {folder_link}")
+    for path in [csv_path, summary_path, html_path]:
+        link = google_drive_links.get(path.name, "")
+        if link:
+            lines.append(f"- `{path.name}`: {link}")
+    return lines or ["- Google Drive link még nincs rögzítve ehhez a futáshoz."]
+
+
 def write_weekly_ghl_html(*, html_path: Path, report: dict[str, Any]) -> None:
     diagnosis = report["diagnosis"]
     metrics = report["metrics"]
