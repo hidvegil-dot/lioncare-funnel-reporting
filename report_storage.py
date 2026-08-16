@@ -95,6 +95,7 @@ def persist_daily_report_history(
 ) -> dict[str, str]:
     config = ReportStorageConfig.from_env_optional()
     strict_storage = _env_flag("REPORT_STORAGE_STRICT")
+    strict_drive_upload = _env_flag("REPORT_DRIVE_UPLOAD_STRICT")
     if config is None:
         message = (
             "Skipping historical report storage because REPORT_HISTORY_ENABLED is disabled "
@@ -150,7 +151,7 @@ def persist_daily_report_history(
         pass
     except Exception as exc:
         logger.exception("Google Drive upload failed; local report files remain available")
-        if strict_storage:
+        if strict_drive_upload:
             storage_failures.append(f"Google Drive upload failed: {exc}")
 
     try:
@@ -301,6 +302,7 @@ def persist_weekly_ai_analysis(
 ) -> dict[str, str]:
     config = ReportStorageConfig.from_env_optional()
     strict_storage = _env_flag("REPORT_STORAGE_STRICT")
+    strict_drive_upload = _env_flag("REPORT_DRIVE_UPLOAD_STRICT")
     if config is None:
         message = "Skipping weekly report storage because Google env vars are missing or history is disabled"
         if strict_storage:
@@ -342,7 +344,7 @@ def persist_weekly_ai_analysis(
             logger.info("Completed Google Drive weekly report upload week_start=%s", week_start)
         except Exception as exc:
             logger.exception("Google Drive weekly upload failed")
-            if strict_storage:
+            if strict_drive_upload:
                 failures.append(f"Google Drive weekly upload failed: {exc}")
     else:
         report_links = {}

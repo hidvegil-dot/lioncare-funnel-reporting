@@ -100,18 +100,25 @@ def main() -> None:
         report=report,
     )
     drive_config = ReportStorageConfig.from_env_optional()
-    if _env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true") and drive_config is not None:
-        report_links.update(upload_weekly_files_to_google_drive(
-            config=drive_config,
-            week_start=window.start,
-            week_end=window.end,
-            files=[html_path, summary_path, csv_path],
-            latest_aliases={
-                html_path.name: "latest_weekly_ghl_funnel_report.html",
-                summary_path.name: "latest_weekly_ghl_ceo_summary.md",
-                csv_path.name: "latest_weekly_ghl_funnel_report.csv",
-            },
-        ))
+    drive_enabled = _env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true")
+    strict_drive_upload = _env_flag("REPORT_DRIVE_UPLOAD_STRICT")
+    if drive_enabled and drive_config is not None:
+        try:
+            report_links.update(upload_weekly_files_to_google_drive(
+                config=drive_config,
+                week_start=window.start,
+                week_end=window.end,
+                files=[html_path, summary_path, csv_path],
+                latest_aliases={
+                    html_path.name: "latest_weekly_ghl_funnel_report.html",
+                    summary_path.name: "latest_weekly_ghl_ceo_summary.md",
+                    csv_path.name: "latest_weekly_ghl_funnel_report.csv",
+                },
+            ))
+        except Exception:
+            logger.exception("Google Drive weekly current file upload failed; local weekly files remain available")
+            if strict_drive_upload:
+                raise
     write_weekly_chatgpt_analysis_handoff(
         markdown_path=handoff_path,
         report=report,
@@ -120,14 +127,19 @@ def main() -> None:
         summary_path=summary_path,
         google_drive_links=report_links,
     )
-    if _env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true") and drive_config is not None:
-        upload_weekly_files_to_google_drive(
-            config=drive_config,
-            week_start=window.start,
-            week_end=window.end,
-            files=[handoff_path],
-            latest_aliases={handoff_path.name: "latest_chatgpt_heti_adatelemzes.md"},
-        )
+    if drive_enabled and drive_config is not None:
+        try:
+            upload_weekly_files_to_google_drive(
+                config=drive_config,
+                week_start=window.start,
+                week_end=window.end,
+                files=[handoff_path],
+                latest_aliases={handoff_path.name: "latest_chatgpt_heti_adatelemzes.md"},
+            )
+        except Exception:
+            logger.exception("Google Drive weekly ChatGPT handoff upload failed; local handoff remains available")
+            if strict_drive_upload:
+                raise
     logger.info("Completed weekly GHL report week_start=%s week_end=%s", window.start, window.end)
 
 

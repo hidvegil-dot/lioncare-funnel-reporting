@@ -612,18 +612,24 @@ def main() -> None:
                 ad_path, lead_path, event_path, qa_path = daily_split_paths
                 drive_config = ReportStorageConfig.from_env_optional()
                 drive_enabled = env_flag("REPORT_DRIVE_UPLOAD_ENABLED", "true")
+                strict_drive_upload = env_flag("REPORT_DRIVE_UPLOAD_STRICT")
                 if drive_enabled and drive_config is not None:
-                    split_links = upload_daily_files_to_google_drive(
-                        config=drive_config,
-                        report_date=start_date,
-                        files=[ad_path, lead_path, event_path, qa_path],
-                        latest_aliases={
-                            ad_path.name: "latest_daily_ad_performance.csv",
-                            lead_path.name: "latest_lead_cohort.csv",
-                            event_path.name: "latest_appointment_events.csv",
-                        },
-                    )
-                    report_links.update(split_links)
+                    try:
+                        split_links = upload_daily_files_to_google_drive(
+                            config=drive_config,
+                            report_date=start_date,
+                            files=[ad_path, lead_path, event_path, qa_path],
+                            latest_aliases={
+                                ad_path.name: "latest_daily_ad_performance.csv",
+                                lead_path.name: "latest_lead_cohort.csv",
+                                event_path.name: "latest_appointment_events.csv",
+                            },
+                        )
+                        report_links.update(split_links)
+                    except Exception:
+                        logger.exception("Google Drive split export upload failed; local split files remain available")
+                        if strict_drive_upload:
+                            raise
                 handoff_path = write_chatgpt_analysis_handoff(
                     output_dir=output_dir,
                     report_date=start_date,
@@ -635,12 +641,17 @@ def main() -> None:
                     google_drive_links=report_links,
                 )
                 if drive_enabled and drive_config is not None:
-                    handoff_links = upload_daily_files_to_google_drive(
-                        config=drive_config,
-                        report_date=start_date,
-                        files=[handoff_path],
-                    )
-                    report_links.update(handoff_links)
+                    try:
+                        handoff_links = upload_daily_files_to_google_drive(
+                            config=drive_config,
+                            report_date=start_date,
+                            files=[handoff_path],
+                        )
+                        report_links.update(handoff_links)
+                    except Exception:
+                        logger.exception("Google Drive ChatGPT handoff upload failed; local handoff remains available")
+                        if strict_drive_upload:
+                            raise
             logger.info(
                 "Completed daily historical storage step in %.2fs",
                 time.perf_counter() - storage_started_at,
