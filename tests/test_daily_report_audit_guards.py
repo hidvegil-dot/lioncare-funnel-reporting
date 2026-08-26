@@ -21,7 +21,7 @@ from daily_split_exports import (
     write_daily_split_qa_report,
 )
 from ghl_client import GHLClient
-from google_sheets_client import _column_letter
+from google_sheets_client import SHEETS_API_NUM_RETRIES, _column_letter, _execute_retryable
 from parser import DAILY_REPORT_INDEX_COLUMNS, build_historical_rows
 from report_builder import (
     DAILY_LEAD_CSV_COLUMNS,
@@ -43,6 +43,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class DailyReportAuditGuardTest(unittest.TestCase):
+    def test_google_sheets_retryable_requests_use_five_retries(self) -> None:
+        request = mock.Mock()
+        request.execute.return_value = {"ok": True}
+
+        result = _execute_retryable(request)
+
+        self.assertEqual({"ok": True}, result)
+        request.execute.assert_called_once_with(num_retries=SHEETS_API_NUM_RETRIES)
+        self.assertEqual(5, SHEETS_API_NUM_RETRIES)
+
     def test_opportunity_status_update_selects_pipeline_accent_insensitive(self) -> None:
         pipeline = select_pipeline(
             [

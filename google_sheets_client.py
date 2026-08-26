@@ -10,6 +10,12 @@ from googleapiclient.discovery import build
 logger = logging.getLogger(__name__)
 
 SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
+SHEETS_API_NUM_RETRIES = 5
+
+
+def _execute_retryable(request: Any) -> Any:
+    """Execute an idempotent Sheets request with exponential-backoff retries."""
+    return request.execute(num_retries=SHEETS_API_NUM_RETRIES)
 
 
 class GoogleSheetsClient:
@@ -22,10 +28,9 @@ class GoogleSheetsClient:
         self.service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
 
     def ensure_tabs(self, tabs: dict[str, list[str]]) -> None:
-        spreadsheet = (
+        spreadsheet = _execute_retryable(
             self.service.spreadsheets()
             .get(spreadsheetId=self.spreadsheet_id, fields="sheets(properties(title))")
-            .execute()
         )
         existing_titles = {
             sheet["properties"]["title"]
@@ -67,11 +72,10 @@ class GoogleSheetsClient:
             len(rows),
         )
         range_name = f"'{tab_name}'!A:{_column_letter(max(len(row) for row in rows) if rows else 26)}"
-        response = (
+        response = _execute_retryable(
             self.service.spreadsheets()
             .values()
             .get(spreadsheetId=self.spreadsheet_id, range=range_name)
-            .execute()
         )
         values = response.get("values", [])
         header = values[:1]
@@ -83,18 +87,22 @@ class GoogleSheetsClient:
         ]
         next_values = header + kept_rows + rows
 
-        self.service.spreadsheets().values().clear(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name,
-            body={},
-        ).execute()
-        if next_values:
-            self.service.spreadsheets().values().update(
+        _execute_retryable(
+            self.service.spreadsheets().values().clear(
                 spreadsheetId=self.spreadsheet_id,
-                range=f"'{tab_name}'!A1",
-                valueInputOption="USER_ENTERED",
-                body={"values": next_values},
-            ).execute()
+                range=range_name,
+                body={},
+            )
+        )
+        if next_values:
+            _execute_retryable(
+                self.service.spreadsheets().values().update(
+                    spreadsheetId=self.spreadsheet_id,
+                    range=f"'{tab_name}'!A1",
+                    valueInputOption="USER_ENTERED",
+                    body={"values": next_values},
+                )
+            )
 
     def upsert_row_by_key(
         self,
@@ -106,11 +114,10 @@ class GoogleSheetsClient:
     ) -> None:
         logger.info("Upserting Google Sheets row tab=%s key_column=%s key=%s", tab_name, key_column, key_value)
         range_name = f"'{tab_name}'!A:{_column_letter(len(row_values))}"
-        response = (
+        response = _execute_retryable(
             self.service.spreadsheets()
             .values()
             .get(spreadsheetId=self.spreadsheet_id, range=range_name)
-            .execute()
         )
         values = response.get("values", [])
         if not values:
@@ -135,42 +142,49 @@ class GoogleSheetsClient:
             if not replaced:
                 next_values.append(row_values)
 
-        self.service.spreadsheets().values().clear(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name,
-            body={},
-        ).execute()
-        self.service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=f"'{tab_name}'!A1",
-            valueInputOption="USER_ENTERED",
-            body={"values": next_values},
-        ).execute()
+        _execute_retryable(
+            self.service.spreadsheets().values().clear(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name,
+                body={},
+            )
+        )
+        _execute_retryable(
+            self.service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"'{tab_name}'!A1",
+                valueInputOption="USER_ENTERED",
+                body={"values": next_values},
+            )
+        )
 
     def _ensure_header(self, *, title: str, headers: list[str]) -> None:
         header_range = f"'{title}'!A1:{_column_letter(len(headers))}1"
-        response = (
+        response = _execute_retryable(
             self.service.spreadsheets()
             .values()
             .get(spreadsheetId=self.spreadsheet_id, range=header_range)
-            .execute()
         )
         current = response.get("values", [[]])
         if current and current[0] == headers:
             return
 
         logger.info("Writing Google Sheets header tab=%s", title)
-        self.service.spreadsheets().values().clear(
-            spreadsheetId=self.spreadsheet_id,
-            range=header_range,
-            body={},
-        ).execute()
-        self.service.spreadsheets().values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=f"'{title}'!A1",
-            valueInputOption="RAW",
-            body={"values": [headers]},
-        ).execute()
+        _execute_retryable(
+            self.service.spreadsheets().values().clear(
+                spreadsheetId=self.spreadsheet_id,
+                range=header_range,
+                body={},
+            )
+        )
+        _execute_retryable(
+            self.service.spreadsheets().values().update(
+                spreadsheetId=self.spreadsheet_id,
+                range=f"'{title}'!A1",
+                valueInputOption="RAW",
+                body={"values": [headers]},
+            )
+        )
 
 
 def _column_letter(column_count: int) -> str:
