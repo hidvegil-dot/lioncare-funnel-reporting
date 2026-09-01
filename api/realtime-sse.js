@@ -13,39 +13,53 @@ module.exports = async function handler(req, res) {
   res.setHeader('X-Accel-Buffering', 'no');
   if (res.flushHeaders) res.flushHeaders();
 
+  let closed = false;
   const send = (type, data = {}) => {
+    if (closed) return;
     try {
       res.write(`event: ${type}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     } catch (_) {}
   };
 
-  send('proxy', { ok:true, transcriptId });
+  send('proxy', { ok:true, transcriptId, at:Date.now() });
 
   const fireflies = io('wss://api.fireflies.ai', {
     path: '/ws/realtime',
     transports: ['websocket'],
     auth: { token: `Bearer ${token}`, transcriptId },
     reconnection: true,
-    reconnectionAttempts: 8,
+    reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
-    timeout: 15000
+    reconnectionDelayMax: 5000,
+    timeout: 20000
   });
 
-  fireflies.on('connect', () => send('socket', { status:'connected' }));
+  fireflies.on('connect', () => send('socket', { status:'connected', socketId:fireflies.id }));
   fireflies.on('auth.success', data => send('auth', { ok:true, data }));
-  fireflies.on('auth.failed', err => send('fatal', { error: err?.message || String(err || 'Fireflies hitelesítési hiba') }));
+  fireflies.on('auth.failed', err => send('fatal', { stage:'auth', error: err?.message || String(err || 'Fireflies hitelesítési hiba') }));
   fireflies.on('connection.established', () => send('ready', { transcriptId }));
-  fireflies.on('connection.error', err => send('fatal', { error: err?.message || String(err || 'Fireflies kapcsolati hiba') }));
-  fireflies.on('connect_error', err => send('fatal', { error: err?.message || String(err || 'Fireflies kapcsolódási hiba') }));
+  fireflies.on('connection.error', err => send('fatal', { stage:'connection', error: err?.message || String(err || 'Fireflies kapcsolati hiba') }));
+  fireflies.on('connect_error', err => send('fatal', { stage:'socket', error: err?.message || String(err || 'Fireflies kapcsolódási hiba') }));
+  fireflies.on('disconnect', reason => send('diagnostic', { stage:'disconnect', reason }));
   fireflies.on('transcription.broadcast', event => send('transcript', event));
 
-  const heartbeat = setInterval(() => send('ping', { at: Date.now() }), 15000);
-  const cleanup = () => {
+  const heartbeat = setInterval(() => send('ping', { at: Date.now(), connected: fireflies.connected }), 15000);
+  // EventSource automatikusan újracsatlakozik. 4 percenként kontrolláltan újranyitjuk
+  // a streamet, így nem függünk a function maximális futási idejétől.
+  const rotate = setTimeout(() => {
+    send('diagnostic', { stage:'rotate', message:'stream újranyitás' });
+    cleanup();
+  }, 240000);
+
+  function cleanup() {
+    if (closed) return;
+    closed = true;
     clearInterval(heartbeat);
+    clearTimeout(rotate);
     try { fireflies.disconnect(); } catch (_) {}
     try { res.end(); } catch (_) {}
-  };
+  }
 
   req.on('close', cleanup);
   req.on('aborted', cleanup);
