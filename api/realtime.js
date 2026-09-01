@@ -1,64 +1,117 @@
-const { experimental_upgradeWebSocket } = require('@vercel/functions');
+const { createServer } = require('http');
+const { WebSocketServer, WebSocket } = require('ws');
 const { io } = require('socket.io-client');
 
-module.exports = function handler(req, res) {
-  return experimental_upgradeWebSocket((ws, request) => {
-    const url = new URL(request?.url || req.url || '/', `https://${req.headers.host}`);
-    const transcriptId = url.searchParams.get('transcriptId');
-    const token = process.env.FIREFLIES_API_KEY;
+const server = createServer((req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store'
+  });
+  res.end(JSON.stringify({
+    ok: true,
+    service: 'lioncare-fireflies-realtime-proxy'
+  }));
+});
 
-    const send = (payload) => {
-      try {
-        ws.send(JSON.stringify(payload));
-      } catch (_) {}
-    };
+const wss = new WebSocketServer({ server });
 
-    if (!token) {
-      send({ type: 'error', error: 'FIREFLIES_API_KEY nincs beállítva' });
-      try { ws.close(1011, 'Missing server configuration'); } catch (_) {}
-      return;
-    }
+wss.on('connection', (client, req) => {
+  const base = `http://${req.headers.host || 'localhost'}`;
+  const url = new URL(req.url || '/', base);
+  const transcriptId = url.searchParams.get('transcriptId');
+  const token = process.env.FIREFLIES_API_KEY;
 
-    if (!transcriptId) {
-      send({ type: 'error', error: 'Hiányzó transcriptId' });
-      try { ws.close(1008, 'Missing transcriptId'); } catch (_) {}
-      return;
-    }
+  const send = (payload) => {
+    try {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(payload));
+      }
+    } catch (_) {}
+  };
 
-    send({ type: 'proxy.connected', transcriptId });
+  if (!token) {
+    send({ type: 'error', error: 'FIREFLIES_API_KEY nincs beállítva' });
+    client.close(1011, 'Missing server configuration');
+    return;
+  }
 
-    const fireflies = io('https://api.fireflies.ai', {
-      path: '/ws/realtime',
-      transports: ['websocket'],
-      auth: {
-        token: `Bearer ${token}`,
-        transcriptId
-      },
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      timeout: 15000
-    });
+  if (!transcriptId) {
+    send({ type: 'error', error: 'Hiányzó transcriptId' });
+    client.close(1008, 'Missing transcriptId');
+    return;
+  }
 
-    fireflies.on('connect', () => send({ type: 'fireflies.socket.connected' }));
-    fireflies.on('auth.success', (data) => send({ type: 'auth.success', data }));
-    fireflies.on('auth.failed', (err) => send({ type: 'auth.failed', error: err?.message || String(err || 'Fireflies hitelesítési hiba') }));
-    fireflies.on('connection.established', () => send({ type: 'connected', transcriptId }));
-    fireflies.on('connection.error', (err) => send({ type: 'connection.error', error: err?.message || String(err || 'Fireflies kapcsolati hiba') }));
-    fireflies.on('connect_error', (err) => send({ type: 'connection.error', error: err?.message || String(err || 'Fireflies kapcsolódási hiba') }));
-    fireflies.on('disconnect', (reason) => send({ type: 'fireflies.socket.disconnected', reason }));
-    fireflies.on('transcription.broadcast', (event) => send({ type: 'transcript', event }));
+  send({ type: 'proxy.connected', transcriptId });
 
-    const cleanup = () => {
-      try { fireflies.disconnect(); } catch (_) {}
-    };
+  const fireflies = io('wss://api.fireflies.ai', {
+    path: '/ws/realtime',
+    transports: ['websocket'],
+    auth: {
+      token: `Bearer ${token}`,
+      transcriptId
+    },
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    timeout: 15000
+  });
 
-    ws.on('close', cleanup);
-    ws.on('error', cleanup);
-    ws.on('message', (raw) => {
-      let msg;
-      try { msg = JSON.parse(String(raw)); } catch (_) { return; }
-      if (msg?.type === 'ping') send({ type: 'pong', at: Date.now() });
+  fireflies.on('connect', () => {
+    send({ type: 'fireflies.socket.connected' });
+  });
+
+  fireflies.on('auth.success', (data) => {
+    send({ type: 'auth.success', data });
+  });
+
+  fireflies.on('auth.failed', (err) => {
+    send({
+      type: 'auth.failed',
+      error: err?.message || String(err || 'Fireflies hitelesítési hiba')
     });
   });
-};
+
+  fireflies.on('connection.established', () => {
+    send({ type: 'connected', transcriptId });
+  });
+
+  fireflies.on('connection.error', (err) => {
+    send({
+      type: 'connection.error',
+      error: err?.message || String(err || 'Fireflies kapcsolati hiba')
+    });
+  });
+
+  fireflies.on('connect_error', (err) => {
+    send({
+      type: 'connection.error',
+      error: err?.message || String(err || 'Fireflies kapcsolódási hiba')
+    });
+  });
+
+  fireflies.on('disconnect', (reason) => {
+    send({ type: 'fireflies.socket.disconnected', reason });
+  });
+
+  fireflies.on('transcription.broadcast', (event) => {
+    send({ type: 'transcript', event });
+  });
+
+  client.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(String(raw));
+      if (msg?.type === 'ping') {
+        send({ type: 'pong', at: Date.now() });
+      }
+    } catch (_) {}
+  });
+
+  const cleanup = () => {
+    try { fireflies.disconnect(); } catch (_) {}
+  };
+
+  client.on('close', cleanup);
+  client.on('error', cleanup);
+});
+
+module.exports = server;
