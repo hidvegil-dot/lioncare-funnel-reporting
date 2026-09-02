@@ -14,8 +14,10 @@ module.exports = async function handler(req, res) {
   if (res.flushHeaders) res.flushHeaders();
 
   let closed = false;
+  let transcriptEvents = 0;
+
   const send = (type, data = {}) => {
-    if (closed) return;
+    if (closed || res.writableEnded) return;
     try {
       res.write(`event: ${type}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -42,13 +44,20 @@ module.exports = async function handler(req, res) {
   fireflies.on('connection.error', err => send('fatal', { stage:'connection', error: err?.message || String(err || 'Fireflies kapcsolati hiba') }));
   fireflies.on('connect_error', err => send('fatal', { stage:'socket', error: err?.message || String(err || 'Fireflies kapcsolódási hiba') }));
   fireflies.on('disconnect', reason => send('diagnostic', { stage:'disconnect', reason }));
-  fireflies.on('transcription.broadcast', event => send('transcript', event));
+  fireflies.on('transcription.broadcast', event => {
+    transcriptEvents += 1;
+    send('transcript', event);
+    send('diagnostic', { stage:'transcript', count:transcriptEvents, hasText:!!event?.text, speaker:event?.speaker_name || null });
+  });
 
-  const heartbeat = setInterval(() => send('ping', { at: Date.now(), connected: fireflies.connected }), 15000);
-  // EventSource automatikusan újracsatlakozik. 4 percenként kontrolláltan újranyitjuk
-  // a streamet, így nem függünk a function maximális futási idejétől.
+  const heartbeat = setInterval(() => send('ping', {
+    at: Date.now(),
+    connected: fireflies.connected,
+    transcriptEvents
+  }), 15000);
+
   const rotate = setTimeout(() => {
-    send('diagnostic', { stage:'rotate', message:'stream újranyitás' });
+    send('diagnostic', { stage:'rotate', message:'stream újranyitás', transcriptEvents });
     cleanup();
   }, 240000);
 
@@ -58,9 +67,12 @@ module.exports = async function handler(req, res) {
     clearInterval(heartbeat);
     clearTimeout(rotate);
     try { fireflies.disconnect(); } catch (_) {}
-    try { res.end(); } catch (_) {}
+    try { if (!res.writableEnded) res.end(); } catch (_) {}
   }
 
-  req.on('close', cleanup);
+  // SSE esetén a kliens kapcsolatának lezárását a RESPONSE-on figyeljük.
+  // A req 'close' eseménye már a bejövő GET kérés befejezésekor is elsülhet,
+  // ami idő előtt megszakíthatná a Fireflies streamet.
+  res.on('close', cleanup);
   req.on('aborted', cleanup);
 };
