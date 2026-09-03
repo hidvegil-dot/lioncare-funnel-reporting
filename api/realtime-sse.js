@@ -90,6 +90,8 @@ module.exports = async function handler(req, res) {
 
   const fireflies = io('wss://api.fireflies.ai', {
     path: '/ws/realtime',
+    transports: ['websocket'],
+    upgrade: false,
     auth: { token: `Bearer ${token}`, transcriptId },
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -98,12 +100,12 @@ module.exports = async function handler(req, res) {
     timeout: 20000
   });
 
-  fireflies.on('connect', () => send('socket', { status:'connected', socketId:fireflies.id }));
+  fireflies.on('connect', () => send('socket', { status:'connected', socketId:fireflies.id, transport:fireflies.io.engine?.transport?.name || 'websocket' }));
   fireflies.on('auth.success', data => send('auth', { ok:true, data }));
   fireflies.on('auth.failed', err => send('fatal', { stage:'auth', error: err?.message || String(err || 'Fireflies hitelesítési hiba') }));
   fireflies.on('connection.established', () => send('ready', { transcriptId }));
   fireflies.on('connection.error', err => send('fatal', { stage:'connection', error: err?.message || String(err || 'Fireflies kapcsolati hiba') }));
-  fireflies.on('connect_error', err => send('fatal', { stage:'socket', error: err?.message || String(err || 'Fireflies kapcsolódási hiba') }));
+  fireflies.on('connect_error', err => send('fatal', { stage:'socket', error: err?.message || String(err || 'Fireflies WebSocket kapcsolódási hiba') }));
   fireflies.on('disconnect', reason => send('diagnostic', { stage:'disconnect', reason }));
 
   fireflies.on('transcription.broadcast', rawEvent => {
@@ -144,7 +146,8 @@ module.exports = async function handler(req, res) {
   });
 
   const heartbeat = setInterval(() => send('ping', {
-    at: Date.now(), connected: fireflies.connected, transcriptEvents
+    at: Date.now(), connected: fireflies.connected, transcriptEvents,
+    transport: fireflies.io.engine?.transport?.name || null
   }), 15000);
 
   const rotate = setTimeout(() => {
