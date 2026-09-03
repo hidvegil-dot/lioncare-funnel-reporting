@@ -15,6 +15,7 @@ module.exports = async function handler(req, res) {
 
   let closed = false;
   let transcriptEvents = 0;
+  const seen = new Set();
 
   const send = (type, data = {}) => {
     if (closed || res.writableEnded) return;
@@ -24,9 +25,45 @@ module.exports = async function handler(req, res) {
     } catch (_) {}
   };
 
+  const unwrap = raw => {
+    if (!raw || typeof raw !== 'object') return raw || {};
+    return raw.data || raw.payload || raw.event || raw.message || raw;
+  };
+
+  const normalize = (raw, eventName = 'unknown') => {
+    const event = unwrap(raw) || {};
+    let text = event.text || event.transcript || event.raw_text || event.rawText || event.sentence || '';
+    if (text && typeof text === 'object') text = text.text || text.raw_text || text.rawText || '';
+    const speaker = event.speaker_name || event.speakerName || event.speaker?.name || event.speaker || 'Beszélő';
+    return {
+      transcript_id: event.transcript_id || event.transcriptId || transcriptId,
+      chunk_id: event.chunk_id || event.chunkId || event.id || `${eventName}-${Date.now()}-${transcriptEvents}`,
+      text: typeof text === 'string' ? text : '',
+      speaker_name: typeof speaker === 'string' ? speaker : 'Beszélő',
+      start_time: event.start_time ?? event.startTime ?? null,
+      end_time: event.end_time ?? event.endTime ?? null
+    };
+  };
+
+  const forwardTranscript = (raw, eventName) => {
+    const normalized = normalize(raw, eventName);
+    if (!normalized.text.trim()) return false;
+    const fingerprint = `${normalized.chunk_id}|${normalized.text}`;
+    if (seen.has(fingerprint)) return true;
+    seen.add(fingerprint);
+    if (seen.size > 500) seen.delete(seen.values().next().value);
+    transcriptEvents += 1;
+    send('transcript', normalized);
+    send('diagnostic', {
+      stage:'transcript', eventName, count:transcriptEvents,
+      hasText:true, speaker:normalized.speaker_name,
+      rawKeys:Object.keys(raw || {})
+    });
+    return true;
+  };
+
   send('proxy', { ok:true, transcriptId, at:Date.now() });
 
-  // Követjük a Fireflies hivatalos mintáját: nem kényszerítjük a transportot.
   const fireflies = io('wss://api.fireflies.ai', {
     path: '/ws/realtime',
     auth: { token: `Bearer ${token}`, transcriptId },
@@ -46,36 +83,31 @@ module.exports = async function handler(req, res) {
   fireflies.on('disconnect', reason => send('diagnostic', { stage:'disconnect', reason }));
 
   fireflies.on('transcription.broadcast', rawEvent => {
-    transcriptEvents += 1;
-    const event = rawEvent?.data || rawEvent?.payload || rawEvent || {};
-    const normalized = {
-      transcript_id: event.transcript_id || event.transcriptId || transcriptId,
-      chunk_id: event.chunk_id || event.chunkId || `rt-${Date.now()}-${transcriptEvents}`,
-      text: event.text || event.transcript || event.raw_text || event.rawText || '',
-      speaker_name: event.speaker_name || event.speakerName || event.speaker || 'Beszélő',
-      start_time: event.start_time ?? event.startTime ?? null,
-      end_time: event.end_time ?? event.endTime ?? null
-    };
-    send('transcript', normalized);
-    send('diagnostic', {
-      stage:'transcript',
-      count:transcriptEvents,
-      hasText:!!normalized.text,
-      speaker:normalized.speaker_name,
-      rawKeys:Object.keys(rawEvent || {}),
-      normalizedKeys:Object.keys(normalized)
+    const ok = forwardTranscript(rawEvent, 'transcription.broadcast');
+    if (!ok) send('diagnostic', {
+      stage:'empty-transcript-event', eventName:'transcription.broadcast',
+      rawKeys:Object.keys(rawEvent || {}), nestedKeys:Object.keys(unwrap(rawEvent) || {})
     });
   });
 
+  // Biztonsági háló: ha a Fireflies fiók/Realtime verzió más eseménynéven küld
+  // szöveget, azt is automatikusan transcriptként továbbítjuk.
   fireflies.onAny((eventName, ...args) => {
     if (['transcription.broadcast','auth.success','auth.failed','connection.established','connection.error'].includes(eventName)) return;
-    send('diagnostic', { stage:'event', eventName, arg0Keys:Object.keys(args?.[0] || {}) });
+    let forwarded = false;
+    for (const arg of args) {
+      if (forwardTranscript(arg, eventName)) { forwarded = true; break; }
+    }
+    if (!forwarded) send('diagnostic', {
+      stage:'event', eventName,
+      argCount:args.length,
+      arg0Keys:Object.keys(args?.[0] || {}),
+      nestedKeys:Object.keys(unwrap(args?.[0]) || {})
+    });
   });
 
   const heartbeat = setInterval(() => send('ping', {
-    at: Date.now(),
-    connected: fireflies.connected,
-    transcriptEvents
+    at: Date.now(), connected: fireflies.connected, transcriptEvents
   }), 15000);
 
   const rotate = setTimeout(() => {
