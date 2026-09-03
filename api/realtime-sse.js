@@ -26,9 +26,9 @@ module.exports = async function handler(req, res) {
 
   send('proxy', { ok:true, transcriptId, at:Date.now() });
 
+  // Követjük a Fireflies hivatalos mintáját: nem kényszerítjük a transportot.
   const fireflies = io('wss://api.fireflies.ai', {
     path: '/ws/realtime',
-    transports: ['websocket'],
     auth: { token: `Bearer ${token}`, transcriptId },
     reconnection: true,
     reconnectionAttempts: Infinity,
@@ -44,10 +44,32 @@ module.exports = async function handler(req, res) {
   fireflies.on('connection.error', err => send('fatal', { stage:'connection', error: err?.message || String(err || 'Fireflies kapcsolati hiba') }));
   fireflies.on('connect_error', err => send('fatal', { stage:'socket', error: err?.message || String(err || 'Fireflies kapcsolódási hiba') }));
   fireflies.on('disconnect', reason => send('diagnostic', { stage:'disconnect', reason }));
-  fireflies.on('transcription.broadcast', event => {
+
+  fireflies.on('transcription.broadcast', rawEvent => {
     transcriptEvents += 1;
-    send('transcript', event);
-    send('diagnostic', { stage:'transcript', count:transcriptEvents, hasText:!!event?.text, speaker:event?.speaker_name || null });
+    const event = rawEvent?.data || rawEvent?.payload || rawEvent || {};
+    const normalized = {
+      transcript_id: event.transcript_id || event.transcriptId || transcriptId,
+      chunk_id: event.chunk_id || event.chunkId || `rt-${Date.now()}-${transcriptEvents}`,
+      text: event.text || event.transcript || event.raw_text || event.rawText || '',
+      speaker_name: event.speaker_name || event.speakerName || event.speaker || 'Beszélő',
+      start_time: event.start_time ?? event.startTime ?? null,
+      end_time: event.end_time ?? event.endTime ?? null
+    };
+    send('transcript', normalized);
+    send('diagnostic', {
+      stage:'transcript',
+      count:transcriptEvents,
+      hasText:!!normalized.text,
+      speaker:normalized.speaker_name,
+      rawKeys:Object.keys(rawEvent || {}),
+      normalizedKeys:Object.keys(normalized)
+    });
+  });
+
+  fireflies.onAny((eventName, ...args) => {
+    if (['transcription.broadcast','auth.success','auth.failed','connection.established','connection.error'].includes(eventName)) return;
+    send('diagnostic', { stage:'event', eventName, arg0Keys:Object.keys(args?.[0] || {}) });
   });
 
   const heartbeat = setInterval(() => send('ping', {
@@ -70,9 +92,6 @@ module.exports = async function handler(req, res) {
     try { if (!res.writableEnded) res.end(); } catch (_) {}
   }
 
-  // SSE esetén a kliens kapcsolatának lezárását a RESPONSE-on figyeljük.
-  // A req 'close' eseménye már a bejövő GET kérés befejezésekor is elsülhet,
-  // ami idő előtt megszakíthatná a Fireflies streamet.
   res.on('close', cleanup);
   req.on('aborted', cleanup);
 };
