@@ -25,16 +25,39 @@ module.exports = async function handler(req, res) {
     } catch (_) {}
   };
 
+  const parseMaybeJson = value => {
+    if (typeof value !== 'string') return value;
+    const s = value.trim();
+    if (!s) return value;
+    if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+      try { return JSON.parse(s); } catch (_) { return value; }
+    }
+    return value;
+  };
+
   const unwrap = raw => {
-    if (!raw || typeof raw !== 'object') return raw || {};
-    return raw.data || raw.payload || raw.event || raw.message || raw;
+    let value = parseMaybeJson(raw);
+    for (let i = 0; i < 4; i++) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) break;
+      const next = value.data ?? value.payload ?? value.event ?? value.message;
+      if (next === undefined || next === value) break;
+      value = parseMaybeJson(next);
+    }
+    return value || {};
   };
 
   const normalize = (raw, eventName = 'unknown') => {
-    const event = unwrap(raw) || {};
+    let event = unwrap(raw) || {};
+    if (typeof event === 'string') event = parseMaybeJson(event);
+    if (!event || typeof event !== 'object' || Array.isArray(event)) event = {};
+
     let text = event.text || event.transcript || event.raw_text || event.rawText || event.sentence || '';
-    if (text && typeof text === 'object') text = text.text || text.raw_text || text.rawText || '';
-    const speaker = event.speaker_name || event.speakerName || event.speaker?.name || event.speaker || 'Beszélő';
+    text = parseMaybeJson(text);
+    if (text && typeof text === 'object') text = text.text || text.raw_text || text.rawText || text.transcript || '';
+
+    let speaker = event.speaker_name || event.speakerName || event.speaker?.name || event.speaker || 'Beszélő';
+    if (speaker && typeof speaker === 'object') speaker = speaker.name || speaker.display_name || 'Beszélő';
+
     return {
       transcript_id: event.transcript_id || event.transcriptId || transcriptId,
       chunk_id: event.chunk_id || event.chunkId || event.id || `${eventName}-${Date.now()}-${transcriptEvents}`,
@@ -57,7 +80,8 @@ module.exports = async function handler(req, res) {
     send('diagnostic', {
       stage:'transcript', eventName, count:transcriptEvents,
       hasText:true, speaker:normalized.speaker_name,
-      rawKeys:Object.keys(raw || {})
+      rawType:typeof raw,
+      rawKeys:(raw && typeof raw === 'object') ? Object.keys(raw) : []
     });
     return true;
   };
@@ -84,26 +108,39 @@ module.exports = async function handler(req, res) {
 
   fireflies.on('transcription.broadcast', rawEvent => {
     const ok = forwardTranscript(rawEvent, 'transcription.broadcast');
-    if (!ok) send('diagnostic', {
-      stage:'empty-transcript-event', eventName:'transcription.broadcast',
-      rawKeys:Object.keys(rawEvent || {}), nestedKeys:Object.keys(unwrap(rawEvent) || {})
-    });
+    if (!ok) {
+      const unwrapped = unwrap(rawEvent);
+      send('diagnostic', {
+        stage:'empty-transcript-event',
+        eventName:'transcription.broadcast',
+        rawType:typeof rawEvent,
+        rawPreview:typeof rawEvent === 'string' ? rawEvent.slice(0,300) : null,
+        rawKeys:(rawEvent && typeof rawEvent === 'object') ? Object.keys(rawEvent) : [],
+        nestedType:typeof unwrapped,
+        nestedKeys:(unwrapped && typeof unwrapped === 'object') ? Object.keys(unwrapped) : []
+      });
+    }
   });
 
-  // Biztonsági háló: ha a Fireflies fiók/Realtime verzió más eseménynéven küld
-  // szöveget, azt is automatikusan transcriptként továbbítjuk.
   fireflies.onAny((eventName, ...args) => {
     if (['transcription.broadcast','auth.success','auth.failed','connection.established','connection.error'].includes(eventName)) return;
     let forwarded = false;
     for (const arg of args) {
       if (forwardTranscript(arg, eventName)) { forwarded = true; break; }
     }
-    if (!forwarded) send('diagnostic', {
-      stage:'event', eventName,
-      argCount:args.length,
-      arg0Keys:Object.keys(args?.[0] || {}),
-      nestedKeys:Object.keys(unwrap(args?.[0]) || {})
-    });
+    if (!forwarded) {
+      const first = args?.[0];
+      const unwrapped = unwrap(first);
+      send('diagnostic', {
+        stage:'event', eventName,
+        argCount:args.length,
+        arg0Type:typeof first,
+        arg0Preview:typeof first === 'string' ? first.slice(0,300) : null,
+        arg0Keys:(first && typeof first === 'object') ? Object.keys(first) : [],
+        nestedType:typeof unwrapped,
+        nestedKeys:(unwrapped && typeof unwrapped === 'object') ? Object.keys(unwrapped) : []
+      });
+    }
   });
 
   const heartbeat = setInterval(() => send('ping', {
