@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from daily_split_exports import LEAD_COHORT_COLUMNS, build_lead_cohort_rows, current_budapest_timestamp, write_csv
 from ghl_client import GHLClient, GHLConfig
