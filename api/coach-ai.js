@@ -9,11 +9,14 @@ const PLAYBOOKS = {
   general: 'Általános pénzügyi konzultáció. Cél: a jelenlegi helyzet és a legfontosabb pénzügyi cél tisztázása, majd konkrét következő lépés.'
 };
 
+const PENSION_OPENING_QUESTION = 'Mi volt az, ami miatt úgy döntött, hogy jelentkezik erre a hirdetésre?';
+
 function extractOutputText(data) {
   if (typeof data?.output_text === 'string' && data.output_text) return data.output_text;
   for (const item of data?.output || []) for (const part of item?.content || []) if (typeof part?.text === 'string' && part.text) return part.text;
   return '';
 }
+
 function cleanJson(text) {
   let s = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   return JSON.parse(s);
@@ -37,7 +40,33 @@ module.exports = async function handler(req, res) {
   const avoidQuestions = Array.isArray(body.avoidQuestions) ? body.avoidQuestions.slice(-8) : [];
   const transcript = lines.map((x, i) => `${i + 1}. ${x.speaker_name || 'Beszélő'}: ${x.text || ''}`).join('\n');
 
-  const prompt = `Te a LionCare élő pénzügyi tárgyalási copilotja vagy. A tanácsadó neve Hidvégi László.\n\nMEETING KERET:\n${meetingGoal}\n\nA KÉRDEZÉSI MÓDSZER:\n- A cél nem az, hogy egymás után dobálj kérdéseket, hanem hogy kérdés -> ügyfél válasz -> rövid összegzés -> következő, mélyebb kérdés ciklusban dolgozz.\n- MINDIG várd meg az ügyfél érdemi válaszát az előző kérdésre.\n- Ha még nincs érdemi ügyfélválasz, ne generálj új kérdést: next_question legyen üres string, waiting_for_answer legyen true.\n- Ha van érdemi válasz, először foglald össze 1 mondatban, mit tudtunk meg valójában; utána adj EGY új kérdést, amely közvetlenül ebből a válaszból következik.\n- A kérdés ne legyen sablonos, ne ismételje az előzőt, és az ügyfél saját fontos szavait lehetőleg használja vissza.\n- Elsődleges logika: motiváció feltárása -> miért fontos -> mi történik ha nem változik -> prioritás -> csak ezután megoldás.\n- Törekedj 2-3 egymásra épülő mélyítő kérdésre, mielőtt magyarázatot vagy megoldást javasolsz.\n- Ha László magyarázni/oktatni kezd, miközben még van feltáratlan ügyfélgondolat, jelezd: inkább kérdezzen tovább.\n- Ne találj ki adatot és ne egészíts ki hiányzó ügyfélmotivációt.\n- Egy kérdés egyszerre, magázó forma.\n- Kifogásnál előbb a valódi okot tárd fel.\n\nAKTUÁLIS ÁLLAPOT:\nMód: ${mode}\nMélységi szint: ${depth}/3\nElőző ajánlott kérdés: ${previousQuestion || '—'}\nElőző válasz összegzése: ${previousAnswerSummary || '—'}\nKerülendő kérdések: ${avoidQuestions.length ? avoidQuestions.join(' | ') : '—'}\n\nLEGFRISSEBB TRANSCRIPT:\n${transcript}\n\nDöntsd el, hogy az ügyfél már adott-e érdemi választ az előző kérdésre. Az érdemi válasz új információt ad a motivációról, helyzetről, következményről, prioritásról, keretről vagy döntési akadályról; az olyan rövid reakció, mint „igen”, „értem”, „aha”, önmagában nem elég.\n\nCsak érvényes JSON-t adj vissza, markdown nélkül:\n{\n  "situation": "1 rövid mondat arról, mi történik most",\n  "stage": "Nyitás|Helyzetfeltárás|Cél|Következmény|Prioritás|Megoldás|Döntési akadály|Zárás",\n  "client_state": "1-3 szavas állapot",\n  "waiting_for_answer": true,\n  "answer_detected": false,\n  "answer_summary": "1 mondatos összegzés az ügyfél válaszáról, vagy —",\n  "next_question": "ha van érdemi válasz: 1 új, konkrét magázó kérdés idézőjelek nélkül; különben üres string",\n  "depth": 0,\n  "can_explain": false,\n  "watch": "1 rövid figyelmeztetés vagy fókusz",\n  "client_words": "legfeljebb 2 rövid, szó szerinti ügyfélkifejezés, vagy —",\n  "closing_readiness": 0,\n  "advisor_feedback": "rövid élő visszajelzés László kérdező/magyarázó működéséről",\n  "advisor_alert": false,\n  "reason_to_refresh": "mi változott"\n}\n\nSzabályok a mezőkhöz:\n- waiting_for_answer=true, ha még várni kell az ügyfél érdemi válaszára.\n- answer_detected=true csak akkor, ha tényleg megérkezett új érdemi ügyfélválasz.\n- depth: ha answer_detected=true és érdemes tovább mélyíteni, növeld legfeljebb 3-ig; ha témaváltás vagy új szál indul, lehet 1.\n- can_explain csak akkor true, ha legalább 2-3 releváns mélyítő válasz már megvan, vagy az ügyfél kifejezetten megoldást kér.\n- next_question legyen üres, ha waiting_for_answer=true.\n- closing_readiness 0-100 egész szám.`;
+  if (meetingType === 'pension' && !previousQuestion && depth === 0) {
+    res.setHeader('Cache-Control','no-store');
+    return res.status(200).json({
+      ok:true,
+      configured:true,
+      result:{
+        situation:'A nyitásnál először az ügyfél saját jelentkezési motivációját kell feltárni.',
+        stage:'Nyitás',
+        client_state:'Feltárás',
+        waiting_for_answer:true,
+        answer_detected:false,
+        answer_summary:'—',
+        next_question:PENSION_OPENING_QUESTION,
+        depth:0,
+        can_explain:false,
+        watch:'Tedd fel ezt az egy kérdést, majd várd meg az ügyfél teljes válaszát.',
+        client_words:'—',
+        closing_readiness:10,
+        advisor_feedback:'Most ne magyarázz. A nyitókérdés után hagyd végigbeszélni az ügyfelet.',
+        advisor_alert:false,
+        reason_to_refresh:'Fix nyitókérdés a hirdetésre jelentkezés valódi motivációjának feltárásához.'
+      },
+      usage:null
+    });
+  }
+
+  const prompt = `Te a LionCare élő pénzügyi tárgyalási copilotja vagy. A tanácsadó neve Hidvégi László.\n\nMEETING KERET:\n${meetingGoal}\n\nA KÉRDEZÉSI MÓDSZER:\n- A cél nem az, hogy egymás után dobálj kérdéseket, hanem hogy kérdés -> ügyfél válasz -> rövid összegzés -> következő, mélyebb kérdés ciklusban dolgozz.\n- MINDIG várd meg az ügyfél érdemi válaszát az előző kérdésre.\n- Nyugdíj lead / első konzultáció esetén a fix nyitókérdés ez: „${PENSION_OPENING_QUESTION}” Ezt követően minden további kérdés az ügyfél válaszából épüljön.\n- Ha még nincs érdemi ügyfélválasz, ne generálj új kérdést: next_question legyen üres string, waiting_for_answer legyen true.\n- Ha van érdemi válasz, először foglald össze 1 mondatban, mit tudtunk meg valójában; utána adj EGY új kérdést, amely közvetlenül ebből a válaszból következik.\n- A kérdés ne legyen sablonos, ne ismételje az előzőt, és az ügyfél saját fontos szavait lehetőleg használja vissza.\n- Elsődleges logika: motiváció feltárása -> miért fontos -> mi történik ha nem változik -> prioritás -> csak ezután megoldás.\n- Törekedj 2-3 egymásra épülő mélyítő kérdésre, mielőtt magyarázatot vagy megoldást javasolsz.\n- Ha László magyarázni/oktatni kezd, miközben még van feltáratlan ügyfélgondolat, jelezd: inkább kérdezzen tovább.\n- Ne találj ki adatot és ne egészíts ki hiányzó ügyfélmotivációt.\n- Egy kérdés egyszerre, magázó forma.\n- Kifogásnál előbb a valódi okot tárd fel.\n\nAKTUÁLIS ÁLLAPOT:\nMód: ${mode}\nMélységi szint: ${depth}/3\nElőző ajánlott kérdés: ${previousQuestion || '—'}\nElőző válasz összegzése: ${previousAnswerSummary || '—'}\nKerülendő kérdések: ${avoidQuestions.length ? avoidQuestions.join(' | ') : '—'}\n\nLEGFRISSEBB TRANSCRIPT:\n${transcript}\n\nDöntsd el, hogy az ügyfél már adott-e érdemi választ az előző kérdésre. Az érdemi válasz új információt ad a motivációról, helyzetről, következményről, prioritásról, keretről vagy döntési akadályról; az olyan rövid reakció, mint „igen”, „értem”, „aha”, önmagában nem elég.\n\nCsak érvényes JSON-t adj vissza, markdown nélkül:\n{\n  "situation": "1 rövid mondat arról, mi történik most",\n  "stage": "Nyitás|Helyzetfeltárás|Cél|Következmény|Prioritás|Megoldás|Döntési akadály|Zárás",\n  "client_state": "1-3 szavas állapot",\n  "waiting_for_answer": true,\n  "answer_detected": false,\n  "answer_summary": "1 mondatos összegzés az ügyfél válaszáról, vagy —",\n  "next_question": "ha van érdemi válasz: 1 új, konkrét magázó kérdés idézőjelek nélkül; különben üres string",\n  "depth": 0,\n  "can_explain": false,\n  "watch": "1 rövid figyelmeztetés vagy fókusz",\n  "client_words": "legfeljebb 2 rövid, szó szerinti ügyfélkifejezés, vagy —",\n  "closing_readiness": 0,\n  "advisor_feedback": "rövid élő visszajelzés László kérdező/magyarázó működéséről",\n  "advisor_alert": false,\n  "reason_to_refresh": "mi változott"\n}\n\nSzabályok a mezőkhöz:\n- waiting_for_answer=true, ha még várni kell az ügyfél érdemi válaszára.\n- answer_detected=true csak akkor, ha tényleg megérkezett új érdemi ügyfélválasz.\n- depth: ha answer_detected=true és érdemes tovább mélyíteni, növeld legfeljebb 3-ig; ha témaváltás vagy új szál indul, lehet 1.\n- can_explain csak akkor true, ha legalább 2-3 releváns mélyítő válasz már megvan, vagy az ügyfél kifejezetten megoldást kér.\n- next_question legyen üres, ha waiting_for_answer=true.\n- closing_readiness 0-100 egész szám.`;
 
   try {
     const r = await fetch(OPENAI_URL, {
